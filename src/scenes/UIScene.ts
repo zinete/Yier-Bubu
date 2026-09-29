@@ -1,5 +1,6 @@
 import Phaser from 'phaser';
-import { DESIGN_HEIGHT, DESIGN_WIDTH, REGISTRY, SCENE } from '../config/constants';
+import { REGISTRY, SCENE } from '../config/constants';
+import { computeUILayout, isTouchPrimaryDevice } from '../systems/UILayout';
 import type { AudioSettings } from '../systems/AudioManager';
 import type { Control } from '../systems/InputManager';
 import type { HudState } from '../types/game';
@@ -28,6 +29,7 @@ export class UIScene extends Phaser.Scene {
   private joystickDirection = 0;
   private joystickBase?: Phaser.GameObjects.Image;
   private joystickThumb?: Phaser.GameObjects.Arc;
+  private joystickHitZone?: Phaser.GameObjects.Zone;
   private readonly actionControls: ActionControl[] = [];
 
   constructor() {
@@ -51,12 +53,16 @@ export class UIScene extends Phaser.Scene {
     this.scoreText = this.hudText();
     this.timerText = this.hudText();
 
-    this.pauseButton = this.iconButton('ui-button-pause', () => this.game.events.emit('game-action', 'pause'));
-    this.soundButton = this.iconButton('ui-button-sound-on', () => this.game.events.emit('game-action', 'sound'));
+    this.pauseButton = this.iconButton('ui-button-pause', () =>
+      this.game.events.emit('game-action', 'pause'),
+    );
+    this.soundButton = this.iconButton('ui-button-sound-on', () =>
+      this.game.events.emit('game-action', 'sound'),
+    );
 
     this.registry.events.on('changedata-hud', this.render, this);
     this.registry.events.on('changedata-audioSettings', this.renderAudio, this);
-    if (this.sys.game.device.input.touch) this.createMobileControls();
+    if (isTouchPrimaryDevice()) this.createMobileControls();
     this.scale.on(Phaser.Scale.Events.RESIZE, this.layout, this);
     this.layout();
     this.render(this.registry, this.registry.get('hud') as HudState);
@@ -103,16 +109,19 @@ export class UIScene extends Phaser.Scene {
   }
 
   private renderAudio(_parent: Phaser.Data.DataManager, settings?: AudioSettings): void {
-    this.soundButton.setTexture(settings?.sound === false ? 'ui-button-sound-off' : 'ui-button-sound-on');
+    this.soundButton.setTexture(
+      settings?.sound === false ? 'ui-button-sound-off' : 'ui-button-sound-on',
+    );
   }
 
   private createMobileControls(): void {
-    this.joystickBase = this.add.image(0, 0, 'ui-joystick-idle').setScrollFactor(0).setInteractive();
+    this.joystickHitZone = this.add.zone(0, 0, 200, 200).setOrigin(0.5).setInteractive();
+    this.joystickBase = this.add.image(0, 0, 'ui-joystick-idle').setScrollFactor(0);
     this.joystickThumb = this.add
       .circle(0, 0, 22, 0xffffff, 0.72)
       .setStrokeStyle(2, 0x2f80ed, 0.7)
       .setScrollFactor(0);
-    this.joystickBase.on('pointerdown', (pointer: Phaser.Input.Pointer) => {
+    this.joystickHitZone.on('pointerdown', (pointer: Phaser.Input.Pointer) => {
       this.joystickPointerId = pointer.id;
       this.updateJoystick(pointer);
     });
@@ -138,31 +147,23 @@ export class UIScene extends Phaser.Scene {
   }
 
   private layout(): void {
-    const viewportWidth = this.scale.width;
-    const viewportHeight = this.scale.height;
-    const uiZoom = Math.min(viewportWidth / DESIGN_WIDTH, viewportHeight / DESIGN_HEIGHT);
-    this.cameras.main
-      .setViewport(0, 0, viewportWidth, viewportHeight)
-      .setZoom(uiZoom)
-      .centerOn(DESIGN_WIDTH / 2, DESIGN_HEIGHT / 2);
-    const width = DESIGN_WIDTH;
-    const height = DESIGN_HEIGHT;
-    const compact = width < 760 || height < 420;
-    const margin = compact ? 10 : 16;
-    const reservedRight = compact ? 96 : 116;
-    const hudWidth = Phaser.Math.Clamp(width - margin * 2 - reservedRight - 24, compact ? 290 : 360, 420);
-    const hudHeight = Math.round((hudWidth * 353) / 1268);
-    const scale = hudWidth / 420;
-    const panelX = margin + 24 * scale;
-    const panelY = margin;
+    const width = this.scale.width;
+    const height = this.scale.height;
+    const layout = computeUILayout(width, height);
+    const margin = layout.margin;
+    const scale = layout.hud.scale;
+    const panelX = layout.hud.x;
+    const panelY = layout.hud.y;
 
-    this.hudPanel.setPosition(panelX, panelY).setDisplaySize(hudWidth, hudHeight);
+    this.hudPanel.setPosition(panelX, panelY).setDisplaySize(layout.hud.width, layout.hud.height);
 
     const portraitSize = 104 * scale;
     const portraitX = panelX + 26 * scale;
     const portraitY = panelY + 58 * scale;
     this.portraitFrame.setPosition(portraitX, portraitY).setDisplaySize(portraitSize, portraitSize);
-    this.portrait.setPosition(portraitX, portraitY + 5 * scale).setDisplaySize(70 * scale, 78 * scale);
+    this.portrait
+      .setPosition(portraitX, portraitY + 5 * scale)
+      .setDisplaySize(70 * scale, 78 * scale);
 
     this.hearts.forEach((heart, index) => {
       heart
@@ -176,33 +177,38 @@ export class UIScene extends Phaser.Scene {
     this.positionIcon('coinIcon', panelX + 247 * scale, panelY + 34 * scale, 25 * scale);
     this.positionIcon('starIcon', panelX + 105 * scale, panelY + 78 * scale, 25 * scale);
     this.positionIcon('timerIcon', panelX + 247 * scale, panelY + 78 * scale, 25 * scale);
-    this.scoreText.setPosition(panelX + 271 * scale, panelY + 34 * scale).setFontSize(`${Math.round(18 * scale)}px`);
-    this.starText.setPosition(panelX + 131 * scale, panelY + 78 * scale).setFontSize(`${Math.round(18 * scale)}px`);
-    this.timerText.setPosition(panelX + 273 * scale, panelY + 78 * scale).setFontSize(`${Math.round(18 * scale)}px`);
+    this.scoreText
+      .setPosition(panelX + 271 * scale, panelY + 34 * scale)
+      .setFontSize(`${Math.round(18 * scale)}px`);
+    this.starText
+      .setPosition(panelX + 131 * scale, panelY + 78 * scale)
+      .setFontSize(`${Math.round(18 * scale)}px`);
+    this.timerText
+      .setPosition(panelX + 273 * scale, panelY + 78 * scale)
+      .setFontSize(`${Math.round(18 * scale)}px`);
 
-    const topButtonSize = compact ? 42 : 48;
-    this.pauseButton.setPosition(width - margin, margin).setDisplaySize(topButtonSize, topButtonSize);
+    this.pauseButton
+      .setPosition(width - margin, margin)
+      .setDisplaySize(layout.topButtonSize, layout.topButtonSize);
     this.soundButton
-      .setPosition(width - margin - topButtonSize - 10, margin)
-      .setDisplaySize(topButtonSize, topButtonSize);
+      .setPosition(width - margin - layout.topButtonSize - 10, margin)
+      .setDisplaySize(layout.topButtonSize, layout.topButtonSize);
 
     const base = this.joystickBase;
     const thumb = this.joystickThumb;
-    if (base && thumb) {
-      const joystickSize = compact ? 96 : 118;
+    const hitZone = this.joystickHitZone;
+    if (base && thumb && hitZone) {
       base
-        .setDisplaySize(joystickSize, joystickSize)
-        .setPosition(margin + joystickSize / 2, height - margin - joystickSize / 2);
-      thumb.setPosition(base.x, base.y).setRadius(Math.round(joystickSize * 0.18));
+        .setDisplaySize(layout.joystick.size, layout.joystick.size)
+        .setPosition(layout.joystick.x, layout.joystick.y);
+      hitZone.setSize(layout.joystick.hitSize, layout.joystick.hitSize).setPosition(base.x, base.y);
+      thumb.setPosition(base.x, base.y).setRadius(Math.round(layout.joystick.size * 0.18));
       this.setJoystickDirection(0);
       this.joystickPointerId = undefined;
     }
     for (const action of this.actionControls) {
-      const size = compact ? Math.round(action.size * 0.84) : action.size;
-      const isJump = action.control === 'jump';
-      const x = isJump ? width - margin - size / 2 : width - margin - size * 1.62;
-      const y = isJump ? height - margin - size / 2 : height - margin - size * 0.55;
-      action.button.setPosition(x, y).setDisplaySize(size, size);
+      const spec = action.control === 'jump' ? layout.jump : layout.attack;
+      action.button.setPosition(spec.x, spec.y).setDisplaySize(spec.size, spec.size);
     }
   }
 
@@ -226,12 +232,14 @@ export class UIScene extends Phaser.Scene {
     const base = this.joystickBase;
     const thumb = this.joystickThumb;
     if (!base || !thumb) return;
-    const position = pointer.positionToCamera(this.cameras.main) as Phaser.Math.Vector2;
+    const position = new Phaser.Math.Vector2(pointer.x, pointer.y);
     const limit = base.displayWidth * 0.28;
     const offsetX = Phaser.Math.Clamp(position.x - base.x, -limit, limit);
     const offsetY = Phaser.Math.Clamp(position.y - base.y, -limit, limit);
     thumb.setPosition(base.x + offsetX, base.y + offsetY);
-    this.setJoystickDirection(Math.abs(offsetX) < base.displayWidth * 0.08 ? 0 : Math.sign(offsetX));
+    this.setJoystickDirection(
+      Math.abs(offsetX) < base.displayWidth * 0.08 ? 0 : Math.sign(offsetX),
+    );
   }
 
   private setJoystickDirection(direction: number): void {

@@ -1,7 +1,5 @@
-export const GAME_WIDTH = 1920;
-export const GAME_HEIGHT = 1080;
-// 游戏设计坐标：不同屏幕通过相机缩放保持该基准下的角色和地图比例。
-// Gameplay keeps its original coordinate system while the canvas uses a 1920x1080 UI canvas.
+// 游戏设计坐标：World 相机保证 960x540 基准视野，宽屏仅增加横向可视范围。
+// Canvas 使用设备实际尺寸（RESIZE），UI 直接使用真实屏幕坐标（UILayout）。
 export const DESIGN_WIDTH = 960;
 export const DESIGN_HEIGHT = 540;
 export const WORLD_WIDTH = 4200;

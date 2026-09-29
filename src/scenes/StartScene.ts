@@ -5,6 +5,9 @@ import {
   saveAudioSettings,
   type AudioSettings,
 } from '../systems/AudioManager';
+
+import { ViewportManager } from '../systems/ViewportManager';
+
 import type { CharacterId } from '../types/game';
 
 const WIDTH = 1920;
@@ -30,8 +33,8 @@ export class StartScene extends Phaser.Scene {
   }
 
   create(): void {
+    ViewportManager.attach(this, 0x9bd8ff, WIDTH, HEIGHT);
     this.selected = (this.registry.get(REGISTRY.CHARACTER) as CharacterId | undefined) ?? 'yier';
-    this.cameras.main.setBackgroundColor('#9bd8ff');
 
     this.add.image(WIDTH / 2, HEIGHT / 2, 'start-background').setDisplaySize(WIDTH, HEIGHT);
     this.add.image(WIDTH / 2, 138, 'start-logo').setDisplaySize(760, 276);
@@ -117,10 +120,15 @@ export class StartScene extends Phaser.Scene {
     );
     button
       .setSize(510, 157)
-      .setInteractive(new Phaser.Geom.Rectangle(-255, -78, 510, 157), Phaser.Geom.Rectangle.Contains)
+      .setInteractive(
+        new Phaser.Geom.Rectangle(-255, -78, 510, 157),
+        Phaser.Geom.Rectangle.Contains,
+      )
       .on('pointerover', () => this.tweens.add({ targets: button, scale: 1.035, duration: 120 }))
       .on('pointerout', () => this.tweens.add({ targets: button, scale: 1, duration: 120 }))
-      .on('pointerdown', () => this.tweens.add({ targets: button, scale: 0.97, yoyo: true, duration: 80 }))
+      .on('pointerdown', () =>
+        this.tweens.add({ targets: button, scale: 0.97, yoyo: true, duration: 80 }),
+      )
       .on('pointerup', () => this.startGame());
 
     if (this.hasStarted()) {
@@ -139,9 +147,7 @@ export class StartScene extends Phaser.Scene {
 
   private createUtilityButtons(): void {
     this.soundButton = this.add.image(1740, 76, 'start-button-sound-on').setDisplaySize(82, 80);
-    const settingsButton = this.add
-      .image(1834, 76, 'start-button-settings')
-      .setDisplaySize(82, 80);
+    const settingsButton = this.add.image(1834, 76, 'start-button-settings').setDisplaySize(82, 80);
     this.bindImageButton(this.soundButton, () => this.toggleSound());
     this.bindImageButton(settingsButton, () => this.setSettingsVisible(true));
     this.renderSoundButtons();
@@ -194,11 +200,21 @@ export class StartScene extends Phaser.Scene {
     );
     close
       .setSize(260, 104)
-      .setInteractive(new Phaser.Geom.Rectangle(-130, -52, 260, 104), Phaser.Geom.Rectangle.Contains)
+      .setInteractive(
+        new Phaser.Geom.Rectangle(-130, -52, 260, 104),
+        Phaser.Geom.Rectangle.Contains,
+      )
       .on('pointerup', () => this.setSettingsVisible(false));
 
     this.settingsModal = this.add
-      .container(WIDTH / 2, HEIGHT / 2, [backdrop, panel, title, soundLabel, this.settingsSoundButton, close])
+      .container(WIDTH / 2, HEIGHT / 2, [
+        backdrop,
+        panel,
+        title,
+        soundLabel,
+        this.settingsSoundButton,
+        close,
+      ])
       .setDepth(100)
       .setVisible(false);
   }

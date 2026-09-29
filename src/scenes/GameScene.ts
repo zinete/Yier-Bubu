@@ -1,12 +1,5 @@
 import Phaser from 'phaser';
-import {
-  DESIGN_HEIGHT,
-  DESIGN_WIDTH,
-  REGISTRY,
-  SCENE,
-  WORLD_HEIGHT,
-  WORLD_WIDTH,
-} from '../config/constants';
+import { REGISTRY, SCENE, WORLD_HEIGHT, WORLD_WIDTH } from '../config/constants';
 import { Player } from '../entities/Player';
 import { Enemy } from '../entities/Enemy';
 import { Projectile } from '../entities/Projectile';
@@ -15,6 +8,7 @@ import { AudioManager } from '../systems/AudioManager';
 import { InputManager } from '../systems/InputManager';
 import { LevelValidator } from '../systems/LevelValidator';
 import type { CharacterId, GameStatus, HudState } from '../types/game';
+import { CameraManager } from '../systems/CameraManager';
 export class GameScene extends Phaser.Scene {
   private player!: Player;
   private inputManager!: InputManager;
@@ -86,12 +80,7 @@ export class GameScene extends Phaser.Scene {
       }
     });
     this.physics.add.overlap(this.player, this.goal, () => this.finish(true));
-    this.cameras.main
-      .setBounds(0, 0, WORLD_WIDTH, WORLD_HEIGHT)
-      .startFollow(this.player, true, 0.1, 0.1, -110, 70)
-      .setRoundPixels(true);
-    this.updateCameraForViewport();
-    this.scale.on(Phaser.Scale.Events.RESIZE, this.updateCameraForViewport, this);
+    CameraManager.attach(this, this.player);
     this.scene.launch(SCENE.UI);
     this.time.addEvent({
       delay: 1000,
@@ -139,7 +128,7 @@ export class GameScene extends Phaser.Scene {
     this.publishHud();
   }
   private createBackground(): void {
-    this.add.rectangle(WORLD_WIDTH / 2, 270, WORLD_WIDTH, 540, 0x9ed8ff);
+    this.add.rectangle(WORLD_WIDTH / 2, 0, WORLD_WIDTH, WORLD_HEIGHT * 3, 0x9ed8ff);
     for (let x = 80; x < WORLD_WIDTH; x += 220) {
       this.add.circle(x, 120 + (x % 3) * 20, 46, 0xffffff, 0.36).setScrollFactor(0.25);
       this.add.triangle(x, 444, x + 100, 286, x + 200, 444, 0x82bc75, 0.65);
@@ -240,25 +229,7 @@ export class GameScene extends Phaser.Scene {
     };
     this.registry.set('hud', state);
   }
-  private updateCameraForViewport(): void {
-    const camera = this.cameras.main;
-    const width = this.scale.width;
-    const height = this.scale.height;
-    // Expand Camera：画布使用设备分辨率，场景按设计比例缩放；宽高比变化时展示更多世界，
-    // 不拉伸角色、不留边，也不依赖一套固定手机尺寸。
-    const zoom = Math.min(width / DESIGN_WIDTH, height / DESIGN_HEIGHT);
-    const visibleWidth = width / zoom;
-    const visibleHeight = height / zoom;
-    const worldHeight = Math.max(WORLD_HEIGHT, visibleHeight);
-    this.physics.world.setBounds(0, 0, WORLD_WIDTH, worldHeight);
-    camera
-      .setBounds(0, 0, WORLD_WIDTH, worldHeight)
-      .setViewport(0, 0, width, height)
-      .setZoom(zoom)
-      .setDeadzone(Math.min(300, visibleWidth * 0.42), Math.min(100, visibleHeight * 0.24));
-  }
   private destroyGameScene(): void {
     this.game.events.off('game-action', this.handleAction, this);
-    this.scale.off(Phaser.Scale.Events.RESIZE, this.updateCameraForViewport, this);
   }
 }
