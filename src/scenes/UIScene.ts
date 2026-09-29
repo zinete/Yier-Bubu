@@ -27,6 +27,8 @@ export class UIScene extends Phaser.Scene {
   private soundButton!: Phaser.GameObjects.Image;
   private joystickPointerId?: number;
   private joystickDirection = 0;
+  private lastHudSignature = '';
+  private lastAudioSignature = '';
   private joystickBase?: Phaser.GameObjects.Image;
   private joystickThumb?: Phaser.GameObjects.Arc;
   private joystickHitZone?: Phaser.GameObjects.Zone;
@@ -37,6 +39,8 @@ export class UIScene extends Phaser.Scene {
   }
 
   create(): void {
+    this.hearts.length = 0;
+    this.actionControls.length = 0;
     this.hudPanel = this.add.image(0, 0, 'ui-hud-panel').setOrigin(0, 0).setScrollFactor(0);
     this.portraitFrame = this.add.image(0, 0, 'ui-portrait-frame').setScrollFactor(0).setDepth(2);
     this.portrait = this.add.sprite(0, 0, 'characters', 0).setScrollFactor(0).setDepth(3);
@@ -60,14 +64,33 @@ export class UIScene extends Phaser.Scene {
       this.game.events.emit('game-action', 'sound'),
     );
 
-    this.registry.events.on('changedata-hud', this.render, this);
-    this.registry.events.on('changedata-audioSettings', this.renderAudio, this);
     if (isTouchPrimaryDevice()) this.createMobileControls();
     this.scale.on(Phaser.Scale.Events.RESIZE, this.layout, this);
     this.layout();
     this.render(this.registry, this.registry.get('hud') as HudState);
     this.renderAudio(this.registry, this.registry.get(REGISTRY.AUDIO) as AudioSettings);
     this.events.once(Phaser.Scenes.Events.SHUTDOWN, () => this.destroyUi());
+  }
+
+  update(): void {
+    const hud = this.registry.get('hud') as HudState | undefined;
+    if (hud) {
+      const signature = this.hudSignature(hud);
+      if (signature !== this.lastHudSignature) {
+        this.lastHudSignature = signature;
+        this.render(this.registry, hud);
+      }
+    }
+    const audio = this.registry.get(REGISTRY.AUDIO) as AudioSettings | undefined;
+    const audioSignature = audio ? String(audio.sound !== false) : '';
+    if (audioSignature !== this.lastAudioSignature) {
+      this.lastAudioSignature = audioSignature;
+      this.renderAudio(this.registry, audio);
+    }
+  }
+
+  private hudSignature(state: HudState): string {
+    return `${state.health}|${state.score}|${state.coins}|${state.totalCoins}|${state.seconds}|${state.character}|${state.paused}`;
   }
 
   private hudText(color = '#1d2b3a'): Phaser.GameObjects.Text {
@@ -100,16 +123,16 @@ export class UIScene extends Phaser.Scene {
     if (!state) return;
     this.portrait.setFrame(state.character === 'yier' ? 0 : 16);
     this.hearts.forEach((heart, index) => {
-      heart.setTexture(index < state.health ? 'ui-heart-full' : 'ui-heart-empty');
+      heart?.setTexture(index < state.health ? 'ui-heart-full' : 'ui-heart-empty');
     });
     this.starText.setText(`${state.coins}/${state.totalCoins}`);
     this.scoreText.setText(String(state.score));
     this.timerText.setText(`${state.seconds}s`);
-    this.pauseButton.setTexture(state.paused ? 'ui-button-play' : 'ui-button-pause');
+    this.pauseButton?.setTexture(state.paused ? 'ui-button-play' : 'ui-button-pause');
   }
 
   private renderAudio(_parent: Phaser.Data.DataManager, settings?: AudioSettings): void {
-    this.soundButton.setTexture(
+    this.soundButton?.setTexture(
       settings?.sound === false ? 'ui-button-sound-off' : 'ui-button-sound-on',
     );
   }
@@ -250,8 +273,6 @@ export class UIScene extends Phaser.Scene {
   }
 
   private destroyUi(): void {
-    this.registry.events.off('changedata-hud', this.render, this);
-    this.registry.events.off('changedata-audioSettings', this.renderAudio, this);
     this.scale.off(Phaser.Scale.Events.RESIZE, this.layout, this);
     this.input.off('pointermove', this.onPointerMove, this);
     this.input.off('pointerup', this.onPointerUp, this);

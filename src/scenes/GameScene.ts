@@ -39,7 +39,7 @@ export class GameScene extends Phaser.Scene {
     this.inputManager = new InputManager(this);
     this.audioManager = new AudioManager(this);
     this.createBackground();
-    this.physics.world.setBounds(0, 0, WORLD_WIDTH, WORLD_HEIGHT);
+    this.physics.world.setBounds(0, 0, WORLD_WIDTH, WORLD_HEIGHT + 400);
     this.platforms = this.physics.add.staticGroup();
     for (const data of level1.platforms)
       this.platforms
@@ -103,12 +103,12 @@ export class GameScene extends Phaser.Scene {
     this.player.updatePlayer(time, this.inputManager);
     this.enemies.children.each((child) => {
       (child as Enemy).patrol();
-      return false;
+      return true;
     });
     this.projectiles.children.each((child) => {
       const projectile = child as Projectile;
       if (projectile.active) projectile.updateProjectile(time);
-      return false;
+      return true;
     });
     if (this.inputManager.consumeAttack() && time - this.lastAttack > 350) {
       this.lastAttack = time;
