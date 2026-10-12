@@ -21,7 +21,7 @@ pnpm preview
 
 ## 主要物理参数
 
-参数集中在 `src/config/constants.ts`。`COYOTE_TIME=125ms` 为离台后跳跃宽限，`JUMP_BUFFER_TIME=135ms` 为提前按跳的缓存；`JUMP_CUT_MULTIPLIER=0.45` 使短按更低；上升和下落分别使用 `NORMAL_GRAVITY`、`FALL_GRAVITY`，下落更快。碰撞体为 34×46，视觉精灵为约 79×88，并贴近脚底。
+参数集中在 `src/config/constants.ts`。`COYOTE_TIME=125ms` 为离台后跳跃宽限，`JUMP_BUFFER_TIME=135ms` 为提前按跳的缓存；`JUMP_CUT_MULTIPLIER=0.45` 使短按更低；上升和下落分别使用 `NORMAL_GRAVITY`、`FALL_GRAVITY`，下落更快。视觉精灵为约 79×88；`CharacterBody` 根据各角色所有动画帧的非透明范围计算固定矩形碰撞体，覆盖完整角色，并随精灵统一缩放。碰撞体不随动画切帧改变。
 
 ## 移动端操作
 
@@ -31,14 +31,15 @@ pnpm preview
 
 `LevelValidator` 在开发环境根据跳速、重力和最大水平速度估算高度与距离，并对相邻平台危险跳跃给出控制台警告。主线平台间隔应保持在理论最大距离的 65%～75%（当前采用约 70%），落地区至少留一个角色宽度；较大坑洞应加入桥接平台，高台前加入过渡平台。
 
-## 添加第二关
+## 添加新关卡
 
-1. 在 `src/levels/` 创建 `level2.ts` 并复用 `LevelData`。
+1. 在 `src/levels/` 创建新关卡并复用 `LevelData`（当前已有 1-1 和 1-2）。
 2. 为平台、星星、敌人和出生/终点填写数据后调用 `LevelValidator.validate`。
-3. 在 `GameScene` 按关卡 id 选择数据，通关时保存下一关 id 并重新启动场景。
+3. 在 `src/levels/index.ts` 的 `levels` 中注册，游戏、解锁和下一关逻辑会按顺序读取。
 4. 保持主线路径满足安全范围，再为支线添加更高难度奖励。
 
 ## 尚未完成事项
 
-- 原项目没有独立音频文件；目录已预留，加载 key 与安全降级已实现，放入授权音频并在 `PreloadScene` 加载即可启用。
-- 当前发布关卡为第一关；第二关按上方流程扩展。
+- 当前音频由 `GeneratedAudio` 生成 WAV 音乐与音效；后续可在 `PreloadScene` 替换为美术/音频团队提供的授权资源。
+- 自动检查：`pnpm test`、`pnpm lint`、`pnpm build`。交互验收见 `docs/迭代2与3验收记录.md`。
+- 触屏真机、完整两关通关与音频听感仍需按验收清单检查。

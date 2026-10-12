@@ -5,7 +5,7 @@ import { DESIGN_HEIGHT, DESIGN_WIDTH, WORLD_HEIGHT, WORLD_WIDTH } from '../confi
 type FollowTarget = Phaser.GameObjects.GameObject & { x: number; y: number };
 
 export class CameraManager {
-  static attach(scene: Phaser.Scene, target: FollowTarget): void {
+  static attach(scene: Phaser.Scene, target: FollowTarget, worldWidth = WORLD_WIDTH): void {
     const camera = scene.cameras.main;
 
     const apply = (): void => {
@@ -16,7 +16,7 @@ export class CameraManager {
       const viewWidth = width / zoom;
       const viewHeight = height / zoom;
       camera
-        .setBounds(0, 0, WORLD_WIDTH, WORLD_HEIGHT)
+        .setBounds(0, 0, worldWidth, WORLD_HEIGHT)
         .setZoom(zoom)
         .setDeadzone(Math.min(300, viewWidth * 0.42), Math.min(100, viewHeight * 0.24));
     };

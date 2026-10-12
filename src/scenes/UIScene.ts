@@ -33,6 +33,9 @@ export class UIScene extends Phaser.Scene {
   private joystickThumb?: Phaser.GameObjects.Arc;
   private joystickHitZone?: Phaser.GameObjects.Zone;
   private readonly actionControls: ActionControl[] = [];
+  private helpText!: Phaser.GameObjects.Text;
+  private pauseText!: Phaser.GameObjects.Text;
+  private skillText!: Phaser.GameObjects.Text;
 
   constructor() {
     super(SCENE.UI);
@@ -41,7 +44,33 @@ export class UIScene extends Phaser.Scene {
   create(): void {
     this.hearts.length = 0;
     this.actionControls.length = 0;
-    this.hudPanel = this.add.image(0, 0, 'ui-hud-panel').setOrigin(0, 0).setScrollFactor(0);
+    this.lastHudSignature = '';
+    this.lastAudioSignature = '';
+    if (!this.textures.exists('forest-hud')) {
+      const art = this.make.graphics({ x: 0, y: 0 });
+      art.fillStyle(0x385b4b, 0.18).fillRoundedRect(3, 5, 416, 110, 24);
+      art.fillStyle(0xfff7e5, 0.97).fillRoundedRect(0, 0, 416, 108, 24);
+      art.lineStyle(2, 0xd3bc8b).strokeRoundedRect(1, 1, 414, 106, 24);
+      art.lineStyle(1, 0xffffff).strokeRoundedRect(6, 6, 404, 96, 20);
+      art.fillStyle(0xe6efd8).fillRoundedRect(85, 15, 120, 36, 12);
+      art.generateTexture('forest-hud', 420, 118);
+      art.destroy();
+    }
+    this.skillText = this.add.text(0, 0, '✦ 星光弹 · J', {
+      fontSize: '16px', fontStyle: 'bold', color: '#fff4cf', backgroundColor: '#416b59',
+      padding: { x: 18, y: 10 },
+    }).setOrigin(0.5).setDepth(10);
+    this.helpText = this.add.text(0, 0, isTouchPrimaryDevice()
+      ? '摇杆移动 · 跳跃 / 投掷可同时按住'
+      : 'A/D 或 ←/→ 移动 · 空格跳跃 · J 投掷 · P/Esc 暂停 · M 音效', {
+      fontSize: '14px', color: '#1d2b3a', backgroundColor: '#fff8ec', padding: { x: 8, y: 5 },
+    }).setOrigin(0.5).setDepth(10);
+    this.tweens.add({ targets: this.helpText, alpha: 0, delay: 7000, duration: 1000 });
+    this.pauseText = this.add.text(0, 0, '已暂停\n点击右上角播放按钮或按 P / Esc 继续', {
+      fontSize: '22px', color: '#ffffff', backgroundColor: '#263b50', align: 'center',
+      padding: { x: 18, y: 16 }, wordWrap: { width: 290 },
+    }).setOrigin(0.5).setDepth(20).setVisible(false);
+    this.hudPanel = this.add.image(0, 0, 'forest-hud').setOrigin(0, 0).setScrollFactor(0);
     this.portraitFrame = this.add.image(0, 0, 'ui-portrait-frame').setScrollFactor(0).setDepth(2);
     this.portrait = this.add.sprite(0, 0, 'characters', 0).setScrollFactor(0).setDepth(3);
     this.divider = this.add.rectangle(0, 0, 2, 54, 0xdcc7a3, 0.72).setScrollFactor(0);
@@ -90,7 +119,7 @@ export class UIScene extends Phaser.Scene {
   }
 
   private hudSignature(state: HudState): string {
-    return `${state.health}|${state.score}|${state.coins}|${state.totalCoins}|${state.seconds}|${state.character}|${state.paused}`;
+    return `${state.health}|${state.score}|${state.coins}|${state.totalCoins}|${state.seconds}|${state.character}|${state.paused}|${state.skillReady}`;
   }
 
   private hudText(color = '#1d2b3a'): Phaser.GameObjects.Text {
@@ -129,6 +158,9 @@ export class UIScene extends Phaser.Scene {
     this.scoreText.setText(String(state.score));
     this.timerText.setText(`${state.seconds}s`);
     this.pauseButton?.setTexture(state.paused ? 'ui-button-play' : 'ui-button-pause');
+    this.pauseText?.setVisible(state.paused);
+    this.skillText?.setText(state.skillReady ? '✦ 星光弹 · 就绪' : '✦ 星光弹 · 聚光中')
+      .setAlpha(state.skillReady ? 1 : 0.65);
   }
 
   private renderAudio(_parent: Phaser.Data.DataManager, settings?: AudioSettings): void {
@@ -174,6 +206,10 @@ export class UIScene extends Phaser.Scene {
     const height = this.scale.height;
     const layout = computeUILayout(width, height);
     const margin = layout.margin;
+    this.helpText.setPosition(width / 2, isTouchPrimaryDevice() ? margin + layout.hud.height + 18 : height - 18)
+      .setFontSize(width < 760 ? '12px' : '14px');
+    this.pauseText.setPosition(width / 2, height / 2);
+    this.skillText.setPosition(width / 2, height - 65).setFontSize(width < 760 ? '13px' : '16px');
     const scale = layout.hud.scale;
     const panelX = layout.hud.x;
     const panelY = layout.hud.y;

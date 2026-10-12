@@ -2,6 +2,7 @@ import Phaser from 'phaser';
 import { PLAYER } from '../config/constants';
 import type { CharacterId } from '../types/game';
 import type { InputManager } from '../systems/InputManager';
+import { characterBodyBounds } from '../systems/CharacterBody';
 export class Player extends Phaser.Physics.Arcade.Sprite {
   readonly character: CharacterId;
   private coyoteUntil = 0;
@@ -15,7 +16,10 @@ export class Player extends Phaser.Physics.Arcade.Sprite {
     scene.add.existing(this);
     scene.physics.add.existing(this);
     this.setOrigin(0.5, 1).setDisplaySize(79, 88).setCollideWorldBounds(true);
-    this.arcadeBody.setSize(PLAYER.WIDTH, PLAYER.HEIGHT).setOffset(47, 91);
+    const bounds = characterBodyBounds(this.texture, character);
+    this.arcadeBody
+      .setSize(bounds.width, bounds.height)
+      .setOffset(bounds.x, bounds.y);
     this.setGravityY(PLAYER.NORMAL_GRAVITY).setMaxVelocity(PLAYER.SPEED, PLAYER.MAX_FALL_SPEED);
     this.playAnimation('idle');
   }
@@ -26,6 +30,7 @@ export class Player extends Phaser.Physics.Arcade.Sprite {
     if (input.consumeJump()) this.bufferedJumpUntil = time + PLAYER.JUMP_BUFFER_TIME;
     if (this.bufferedJumpUntil >= time && (wasGrounded || this.coyoteUntil >= time)) {
       body.setVelocityY(PLAYER.JUMP_VELOCITY);
+      this.scene.game.events.emit('player-jump');
       this.bufferedJumpUntil = 0;
       this.coyoteUntil = 0;
     }
@@ -55,6 +60,7 @@ export class Player extends Phaser.Physics.Arcade.Sprite {
   }
   private playStateAnimation(time: number): void {
     const body = this.arcadeBody;
+    this.setTint(time < this.hurtUntil ? 0xffaaaa : 0xffffff);
     if (time < this.hurtUntil) {
       this.playAnimation('hurt');
       return;

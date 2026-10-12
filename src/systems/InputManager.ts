@@ -20,7 +20,16 @@ export class InputManager {
       attack: [keyboard.addKey('J')],
     };
     scene.game.events.on('virtual-control', this.setVirtual, this);
+    scene.game.events.on('blur', this.reset, this);
     scene.events.once(Phaser.Scenes.Events.SHUTDOWN, this.destroy, this);
+  }
+  reset(): void {
+    for (const control of Object.keys(this.held) as Control[]) {
+      this.held[control] = false;
+      this.keyboard[control].forEach((key) => key.reset());
+    }
+    this.jumpPressed = false;
+    this.attackPressed = false;
   }
   update(): void {
     if (this.keyboard.jump.some((key) => Phaser.Input.Keyboard.JustDown(key)))
@@ -48,5 +57,6 @@ export class InputManager {
   }
   private destroy(): void {
     this.scene.game.events.off('virtual-control', this.setVirtual, this);
+    this.scene.game.events.off('blur', this.reset, this);
   }
 }

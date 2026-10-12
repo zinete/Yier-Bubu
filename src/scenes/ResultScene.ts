@@ -5,18 +5,22 @@ interface ResultData {
   won: boolean;
   message: string;
   score: number;
+  levelId: string;
+  nextLevelId?: string;
 }
 
 const FONT = "'Microsoft YaHei', 'PingFang SC', 'Noto Sans CJK SC', sans-serif";
 const TEXT_RESOLUTION = Math.min(window.devicePixelRatio || 1, 2);
 export class ResultScene extends Phaser.Scene {
   private restarting = false;
+  private result!: ResultData;
 
   constructor() {
     super(SCENE.RESULT);
   }
   create(data: ResultData): void {
     this.restarting = false;
+    this.result = data;
     ViewportManager.attach(this, 0x1d2b3a);
 
     this.add.rectangle(480, 270, 6000, 6000, 0x1d2b3a, 0.62);
@@ -27,7 +31,7 @@ export class ResultScene extends Phaser.Scene {
     panel.add(this.add.rectangle(0, 0, 500, 316, 0xfff8ec, 0.98).setStrokeStyle(4, accent));
     panel.add(
       this.add
-        .text(0, -102, data.won ? '通关成功！' : '挑战失败', {
+        .text(0, -102, data.won ? (data.nextLevelId ? '通关成功！' : '冒险全部完成！') : '挑战失败', {
           fontFamily: FONT,
           fontSize: '42px',
           fontStyle: 'bold',
@@ -64,7 +68,7 @@ export class ResultScene extends Phaser.Scene {
     restart.add(this.add.image(0, 0, 'start-button-secondary').setDisplaySize(250, 100));
     restart.add(
       this.add
-        .text(0, 6, '再玩一次', {
+        .text(0, 6, data.nextLevelId ? '下一关' : '再玩一次', {
           fontFamily: FONT,
           fontSize: '30px',
           fontStyle: 'bold',
@@ -86,12 +90,34 @@ export class ResultScene extends Phaser.Scene {
       )
       .on('pointerup', () => this.restartGame());
     panel.add(restart);
+    const navigation = this.add.text(480, 465, '重玩本关        返回主页', {
+      fontFamily: FONT, fontSize: '22px', color: '#ffffff',
+    }).setOrigin(0.5).setInteractive({ useHandCursor: true });
+    navigation.on('pointerup', (pointer: Phaser.Input.Pointer) => {
+      this.navigate(pointer.worldX < 480 ? SCENE.GAME : SCENE.START, data.levelId);
+    });
 
     this.input.keyboard?.once('keydown-ENTER', this.restartGame, this);
     this.input.keyboard?.once('keydown-SPACE', this.restartGame, this);
+    const replay = (): void => this.navigate(SCENE.GAME, data.levelId);
+    const home = (): void => this.navigate(SCENE.START, data.levelId);
+    this.input.keyboard?.on('keydown-R', replay);
+    this.input.keyboard?.on('keydown-H', home);
+    this.add.text(480, 505, 'Enter 继续 · R 重玩 · H 返回主页', {
+      fontFamily: FONT, fontSize: '16px', color: '#ffffff',
+    }).setOrigin(0.5);
+    this.events.once(Phaser.Scenes.Events.SHUTDOWN, () => {
+      this.input.keyboard?.off('keydown-ENTER', this.restartGame, this);
+      this.input.keyboard?.off('keydown-SPACE', this.restartGame, this);
+      this.input.keyboard?.off('keydown-R', replay);
+      this.input.keyboard?.off('keydown-H', home);
+    });
   }
 
   private restartGame(): void {
+    this.navigate(SCENE.GAME, this.result.nextLevelId ?? this.result.levelId);
+  }
+  private navigate(scene: string, levelId: string): void {
     if (this.restarting) return;
     this.restarting = true;
     this.input.keyboard?.off('keydown-ENTER', this.restartGame, this);
@@ -99,8 +125,7 @@ export class ResultScene extends Phaser.Scene {
     this.time.delayedCall(0, () => {
       this.scene.stop(SCENE.UI);
       this.scene.stop(SCENE.GAME);
-      this.scene.start(SCENE.GAME);
-      this.scene.stop(SCENE.RESULT);
+      this.scene.start(scene, { levelId });
     });
   }
 }

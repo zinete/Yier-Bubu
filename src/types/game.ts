@@ -14,6 +14,15 @@ export interface EnemyData {
   min: number;
   max: number;
   speed: number;
+  attack?: EnemyAttackData;
+}
+export interface EnemyAttackData {
+  range: number;
+  cooldown: number;
+  projectileSpeed: number;
+  projectileArc: number;
+  projectileGravity: number;
+  projectileLifetime: number;
 }
 export interface Point {
   x: number;
@@ -38,4 +47,5 @@ export interface HudState {
   seconds: number;
   character: CharacterId;
   paused: boolean;
+  skillReady: boolean;
 }

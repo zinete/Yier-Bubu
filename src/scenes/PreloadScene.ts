@@ -30,17 +30,19 @@ import buttonSoundOff from '../assets/ui/button-sound-off.png';
 import buttonPause from '../assets/ui/button-pause.png';
 import buttonPlay from '../assets/ui/button-play.png';
 import { ViewportManager } from '../systems/ViewportManager';
+import { generatedAudio } from '../systems/GeneratedAudio';
 export class PreloadScene extends Phaser.Scene {
   constructor() {
     super(SCENE.PRELOAD);
   }
   preload(): void {
+    for (const [key, url] of Object.entries(generatedAudio())) this.load.audio(key, url);
     ViewportManager.attach(this);
     const label = this.add
       .text(480, 270, '正在加载冒险素材…', { fontSize: '22px', color: '#1d2b3a' })
       .setOrigin(0.5);
     this.load.on(Phaser.Loader.Events.FILE_LOAD_ERROR, (file: Phaser.Loader.File) => {
-      label.setText(`资源加载失败：${file.key}`);
+      label.setText(file.type === 'audio' ? '声音暂不可用，继续加载游戏…' : `资源加载失败：${file.key}`);
     });
     this.load.spritesheet('characters', characterSheet, { frameWidth: 128, frameHeight: 142 });
     this.load.image('start-background', startBackground);
@@ -106,6 +108,21 @@ export class PreloadScene extends Phaser.Scene {
       graphics.generateTexture(key, width, height);
       graphics.clear();
     };
+    texture('start-settings-clean', () => {
+      graphics.fillStyle(0xc99c51).fillCircle(50, 52, 46);
+      graphics.fillStyle(0xfff5d8).fillCircle(50, 49, 44);
+      graphics.lineStyle(2, 0xe8c989).strokeCircle(50, 49, 42);
+      graphics.lineStyle(3, 0xffffff, 0.9).strokeCircle(50, 49, 37);
+      // 完整绘制齿轮，避免源图裁切及相邻按钮残片。
+      const teeth: Phaser.Types.Math.Vector2Like[] = [];
+      for (let i = 0; i < 40; i += 1) {
+        const angle = i * Math.PI / 20;
+        const radius = i % 5 < 3 ? 24 : 18;
+        teeth.push({ x: 50 + Math.cos(angle) * radius, y: 49 + Math.sin(angle) * radius });
+      }
+      graphics.fillStyle(0x355b8e).fillPoints(teeth, true);
+      graphics.fillStyle(0xfff5d8).fillCircle(50, 49, 8);
+    }, 100, 100);
     texture(
       'platform',
       () => {

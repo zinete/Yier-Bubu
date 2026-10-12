@@ -2,6 +2,7 @@ import Phaser from 'phaser';
 import { REGISTRY, SCENE } from '../config/constants';
 import {
   DEFAULT_AUDIO_SETTINGS,
+  loadAudioSettings,
   saveAudioSettings,
   type AudioSettings,
 } from '../systems/AudioManager';
@@ -9,12 +10,13 @@ import {
 import { ViewportManager } from '../systems/ViewportManager';
 
 import type { CharacterId } from '../types/game';
+import { levels } from '../levels';
+import { loadProgress } from '../systems/ProgressStore';
 
 const WIDTH = 1920;
 const HEIGHT = 1080;
 const FONT = "'Microsoft YaHei', 'PingFang SC', 'Noto Sans CJK SC', sans-serif";
 const TEXT_RESOLUTION = Math.min(window.devicePixelRatio || 1, 2);
-const STARTED_KEY = 'yierBubuHasStarted';
 const CARD_CENTER_Y = 558;
 
 export class StartScene extends Phaser.Scene {
@@ -27,12 +29,14 @@ export class StartScene extends Phaser.Scene {
   private settingsSoundButton!: Phaser.GameObjects.Image;
   private settingsModal!: Phaser.GameObjects.Container;
   private selectionTween?: Phaser.Tweens.Tween;
+  private audioLabels: Phaser.GameObjects.Text[] = [];
 
   constructor() {
     super(SCENE.START);
   }
 
   create(): void {
+    this.audioLabels = [];
     ViewportManager.attach(this, 0x9bd8ff, WIDTH, HEIGHT);
     this.selected = (this.registry.get(REGISTRY.CHARACTER) as CharacterId | undefined) ?? 'yier';
 
@@ -54,7 +58,20 @@ export class StartScene extends Phaser.Scene {
     this.createStartButton();
     this.createUtilityButtons();
     this.createSettingsModal();
+    const progress = loadProgress();
+    levels.forEach((level, index) => {
+      const unlocked = progress.unlocked.includes(level.id);
+      const record = progress.records[level.id];
+      const entry = this.add.text(680 + index * 560, 1030,
+        unlocked ? `${level.id}  ${record ? `最佳 ${record.bestScore}${record.allCollected ? ' · 全收集' : ''}` : '开始挑战'}` : `${level.id}  通关首关解锁`,
+        { fontFamily: FONT, fontSize: '24px', color: unlocked ? '#77512d' : '#888888' },
+      ).setOrigin(0.5).setResolution(TEXT_RESOLUTION);
+      if (unlocked) entry.setInteractive({ useHandCursor: true }).on('pointerup', () => this.startGame(level.id));
+    });
     this.bindKeyboard();
+    this.add.text(WIDTH / 2, 780, '← / → 选角色 · Enter 开始 · S 设置 · 1 / 2 选关', {
+      fontFamily: FONT, fontSize: '24px', color: '#604320',
+    }).setOrigin(0.5).setResolution(TEXT_RESOLUTION);
   }
 
   private createCharacterCards(): void {
@@ -107,7 +124,7 @@ export class StartScene extends Phaser.Scene {
     button.add(this.add.image(0, 0, 'start-button-primary').setDisplaySize(510, 157));
     button.add(
       this.add
-        .text(0, -4, '开始旅程', {
+        .text(0, -4, loadProgress().started ? '继续游戏' : '开始游戏', {
           fontFamily: FONT,
           fontSize: '52px',
           fontStyle: 'bold',
@@ -131,23 +148,11 @@ export class StartScene extends Phaser.Scene {
       )
       .on('pointerup', () => this.startGame());
 
-    if (this.hasStarted()) {
-      this.add
-        .text(WIDTH / 2, 965, '继续上次冒险  〉', {
-          fontFamily: FONT,
-          fontSize: '25px',
-          color: '#76512f',
-        })
-        .setOrigin(0.5)
-        .setResolution(TEXT_RESOLUTION)
-        .setInteractive({ useHandCursor: true })
-        .on('pointerdown', () => this.startGame());
-    }
   }
 
   private createUtilityButtons(): void {
-    this.soundButton = this.add.image(1740, 76, 'start-button-sound-on').setDisplaySize(82, 80);
-    const settingsButton = this.add.image(1834, 76, 'start-button-settings').setDisplaySize(82, 80);
+    this.soundButton = this.add.image(WIDTH - 216, 88, 'ui-button-sound-on').setDisplaySize(88, 88);
+    const settingsButton = this.add.image(WIDTH - 104, 88, 'start-settings-clean').setDisplaySize(88, 88);
     this.bindImageButton(this.soundButton, () => this.toggleSound());
     this.bindImageButton(settingsButton, () => this.setSettingsVisible(true));
     this.renderSoundButtons();
@@ -159,11 +164,11 @@ export class StartScene extends Phaser.Scene {
       .setOrigin(0)
       .setInteractive();
     const panel = this.add
-      .rectangle(0, 0, 610, 390, 0xfffbeb, 0.98)
+      .rectangle(0, 0, 760, 590, 0xfffbeb, 0.98)
       .setStrokeStyle(5, 0xe7bd72)
       .setOrigin(0.5);
     const title = this.add
-      .text(0, -132, '设置', {
+      .text(0, -240, '设置', {
         fontFamily: FONT,
         fontSize: '42px',
         fontStyle: 'bold',
@@ -172,7 +177,7 @@ export class StartScene extends Phaser.Scene {
       .setOrigin(0.5)
       .setResolution(TEXT_RESOLUTION);
     const soundLabel = this.add
-      .text(-92, -35, '声音', {
+      .text(-92, -170, '音效', {
         fontFamily: FONT,
         fontSize: '30px',
         fontStyle: 'bold',
@@ -181,11 +186,11 @@ export class StartScene extends Phaser.Scene {
       .setOrigin(1, 0.5)
       .setResolution(TEXT_RESOLUTION);
     this.settingsSoundButton = this.add
-      .image(28, -35, 'start-button-sound-on')
-      .setDisplaySize(82, 80);
+      .image(28, -170, 'ui-button-sound-on')
+      .setDisplaySize(88, 88);
     this.bindImageButton(this.settingsSoundButton, () => this.toggleSound());
 
-    const close = this.add.container(0, 105);
+    const close = this.add.container(0, 215);
     close.add(this.add.image(0, 0, 'start-button-secondary').setDisplaySize(260, 104));
     close.add(
       this.add
@@ -217,17 +222,67 @@ export class StartScene extends Phaser.Scene {
       ])
       .setDepth(100)
       .setVisible(false);
+    const rows = [
+      { y: -85, action: () => this.changeAudio('music'), label: 'music' },
+      { y: 0, action: () => this.changeAudio('soundVolume', 0.1), label: 'soundVolume' },
+      { y: 85, action: () => this.changeAudio('musicVolume', 0.1), label: 'musicVolume' },
+    ] as const;
+    for (const row of rows) {
+      const label = this.add.text(0, row.y, '', {
+        fontFamily: FONT, fontSize: '27px', color: '#604320',
+      }).setOrigin(0.5).setInteractive({ useHandCursor: true }).on('pointerup', row.action);
+      this.audioLabels.push(label);
+      this.settingsModal.add(label);
+      if (row.label !== 'music') {
+        for (const direction of [-1, 1]) {
+          const button = this.add.text(direction * 265, row.y, direction < 0 ? '−' : '+', {
+            fontSize: '36px', color: '#2776c9', backgroundColor: '#eee6d3', padding: { x: 18, y: 5 },
+          }).setOrigin(0.5).setInteractive({ useHandCursor: true })
+            .on('pointerup', () => this.changeAudio(row.label, direction * 0.1));
+          this.settingsModal.add(button);
+        }
+      }
+    }
+    this.settingsModal.add(this.add.text(0, 145, 'M 音效 · N 音乐 · ← / → 音效音量 · ↑ / ↓ 音乐音量 · Esc 返回', {
+      fontFamily: FONT, fontSize: '18px', color: '#604320',
+    }).setOrigin(0.5));
+    this.renderAudioLabels();
+  }
+
+  private changeAudio(key: 'music' | 'soundVolume' | 'musicVolume', delta = 0): void {
+    const settings = loadAudioSettings();
+    if (key === 'music') settings.music = !settings.music;
+    else settings[key] = Phaser.Math.Clamp(Math.round((settings[key] + delta) * 10) / 10, 0, 1);
+    saveAudioSettings(settings);
+    this.registry.set(REGISTRY.AUDIO, settings);
+    this.renderAudioLabels();
+  }
+  private renderAudioLabels(): void {
+    const settings = loadAudioSettings();
+    this.audioLabels[0]?.setText(`音乐：${settings.music ? '开启' : '关闭'}（点击切换）`);
+    this.audioLabels[1]?.setText(`音效音量：${Math.round(settings.soundVolume * 100)}%`);
+    this.audioLabels[2]?.setText(`音乐音量：${Math.round(settings.musicVolume * 100)}%`);
   }
 
   private bindKeyboard(): void {
-    this.input.keyboard?.on('keydown-LEFT', () => this.selectCharacter('yier'));
+    this.input.keyboard?.on('keydown-LEFT', () => this.settingsModal.visible ? this.changeAudio('soundVolume', -0.1) : this.selectCharacter('yier'));
     this.input.keyboard?.on('keydown-A', () => this.selectCharacter('yier'));
-    this.input.keyboard?.on('keydown-RIGHT', () => this.selectCharacter('bubu'));
+    this.input.keyboard?.on('keydown-RIGHT', () => this.settingsModal.visible ? this.changeAudio('soundVolume', 0.1) : this.selectCharacter('bubu'));
     this.input.keyboard?.on('keydown-D', () => this.selectCharacter('bubu'));
     this.input.keyboard?.on('keydown-ENTER', () => {
       if (!this.settingsModal.visible) this.startGame();
     });
     this.input.keyboard?.on('keydown-ESC', () => this.setSettingsVisible(false));
+    this.input.keyboard?.on('keydown-S', () => this.setSettingsVisible(!this.settingsModal.visible));
+    this.input.keyboard?.on('keydown-M', () => this.toggleSound());
+    this.input.keyboard?.on('keydown-N', () => { if (this.settingsModal.visible) this.changeAudio('music'); });
+    this.input.keyboard?.on('keydown-UP', () => { if (this.settingsModal.visible) this.changeAudio('musicVolume', 0.1); });
+    this.input.keyboard?.on('keydown-DOWN', () => { if (this.settingsModal.visible) this.changeAudio('musicVolume', -0.1); });
+    this.input.keyboard?.on('keydown-ONE', () => this.startGame(levels[0].id));
+    this.input.keyboard?.on('keydown-TWO', () => {
+      if (loadProgress().unlocked.includes(levels[1].id)) this.startGame(levels[1].id);
+    });
+    this.events.once(Phaser.Scenes.Events.SHUTDOWN, () => this.input.keyboard?.removeAllListeners());
   }
 
   private selectCharacter(character: CharacterId): void {
@@ -271,33 +326,27 @@ export class StartScene extends Phaser.Scene {
 
   private renderSoundButtons(): void {
     const settings = this.registry.get(REGISTRY.AUDIO) as AudioSettings | undefined;
-    const texture = settings?.sound === false ? 'start-button-sound-off' : 'start-button-sound-on';
-    this.soundButton?.setTexture(texture).setDisplaySize(82, 80);
-    this.settingsSoundButton?.setTexture(texture).setDisplaySize(82, 80);
+    const texture = settings?.sound === false ? 'ui-button-sound-off' : 'ui-button-sound-on';
+    this.soundButton?.setTexture(texture).setDisplaySize(88, 88);
+    this.settingsSoundButton?.setTexture(texture).setDisplaySize(88, 88);
   }
 
   private setSettingsVisible(visible: boolean): void {
     this.settingsModal.setVisible(visible);
   }
 
-  private startGame(): void {
+  private startGame(levelId?: string): void {
     if (this.settingsModal.visible) return;
     this.registry.set(REGISTRY.CHARACTER, this.selected);
     try {
       localStorage.setItem(REGISTRY.CHARACTER, this.selected);
-      localStorage.setItem(STARTED_KEY, 'true');
     } catch {
       // Starting the game does not depend on storage access.
     }
-    this.scene.start(SCENE.GAME);
-  }
-
-  private hasStarted(): boolean {
-    try {
-      return localStorage.getItem(STARTED_KEY) === 'true';
-    } catch {
-      return false;
-    }
+    const progress = loadProgress();
+    this.scene.start(SCENE.GAME, {
+      levelId: levelId ?? (progress.started ? progress.currentLevel : levels[0].id),
+    });
   }
 
   private nameStyle(color: string): Phaser.Types.GameObjects.Text.TextStyle {

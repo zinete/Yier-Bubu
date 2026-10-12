@@ -29,7 +29,8 @@ export const computeUILayout = (width: number, height: number): UILayoutSpec => 
 
   const topButtonSize = clamp(uiScale * 44, 40, 92);
   const reserve = topButtonSize * 2 + 28;
-  const hudWidth = Math.max(280, Math.min(width * 0.36, 620, width - margin * 2 - reserve - 12));
+  const availableHudWidth = width - margin * 2 - reserve - 12;
+  const hudWidth = Math.min(availableHudWidth, Math.max(240, Math.min(width * 0.36, 620)));
   const hudHeight = Math.round((hudWidth * 353) / 1268);
   const hudScale = hudWidth / 420;
 
