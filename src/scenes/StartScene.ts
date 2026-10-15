@@ -58,6 +58,10 @@ export class StartScene extends Phaser.Scene {
     this.createStartButton();
     this.createUtilityButtons();
     this.createSettingsModal();
+    this.add.text(WIDTH / 2, 975, '✦ 地图工坊 · 创建自己的冒险', {
+      fontFamily: FONT, fontSize: '28px', color: '#416b59', backgroundColor: '#fff7e5', padding: { x: 24, y: 10 },
+    }).setOrigin(0.5).setInteractive({ useHandCursor: true })
+      .on('pointerup', () => { if (!this.settingsModal.visible) this.scene.start(SCENE.EDITOR); });
     const progress = loadProgress();
     levels.forEach((level, index) => {
       const unlocked = progress.unlocked.includes(level.id);

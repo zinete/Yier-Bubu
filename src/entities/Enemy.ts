@@ -1,5 +1,6 @@
 import Phaser from 'phaser';
 import type { EnemyAttackData, EnemyData } from '../types/game';
+import { CUSTOM_OBJECTS } from '../systems/ObjectGeometry';
 export class Enemy extends Phaser.Physics.Arcade.Sprite {
   private aliveEnemy = true;
   private readonly min: number;
@@ -33,6 +34,12 @@ export class Enemy extends Phaser.Physics.Arcade.Sprite {
     else if (this.x >= this.max) body.setVelocityX(-Math.abs(this.speed));
     this.setFlipX(body.velocity.x < 0);
   }
+  applySkin(key: string, frame?: string): void {
+    const size = CUSTOM_OBJECTS.enemy;
+    this.setTexture(key, frame).setDisplaySize(size.width, size.height);
+    const width = size.bodyWidth / this.scaleX; const height = size.bodyHeight / this.scaleY;
+    this.arcadeBody.setSize(width, height).setOffset((this.width - width) / 2, this.height - height);
+  }
   getAttack(time: number, targetX: number): EnemyAttackData | undefined {
     if (!this.aliveEnemy || !this.attack) return undefined;
     if (Math.abs(targetX - this.x) > this.attack.range) {
@@ -56,7 +63,7 @@ export class Enemy extends Phaser.Physics.Arcade.Sprite {
     if (!this.aliveEnemy) return false;
     this.aliveEnemy = false;
     this.arcadeBody.enable = false;
-    this.setScale(1, 0.35);
+    this.setScale(this.scaleX, this.scaleY * 0.35);
     this.scene.time.delayedCall(350, () => this.destroy());
     return true;
   }

@@ -33,9 +33,14 @@ export class UIScene extends Phaser.Scene {
   private joystickThumb?: Phaser.GameObjects.Arc;
   private joystickHitZone?: Phaser.GameObjects.Zone;
   private readonly actionControls: ActionControl[] = [];
-  private helpText!: Phaser.GameObjects.Text;
+  private tutorial!: Phaser.GameObjects.Container;
+  private tutorialTitle!: Phaser.GameObjects.Text;
+  private tutorialHint!: Phaser.GameObjects.Text;
   private pauseText!: Phaser.GameObjects.Text;
   private skillText!: Phaser.GameObjects.Text;
+  private pauseMenu!: Phaser.GameObjects.Container;
+  private journeyText!: Phaser.GameObjects.Text;
+  private skillBar!: Phaser.GameObjects.Rectangle;
 
   constructor() {
     super(SCENE.UI);
@@ -60,16 +65,28 @@ export class UIScene extends Phaser.Scene {
       fontSize: '16px', fontStyle: 'bold', color: '#fff4cf', backgroundColor: '#416b59',
       padding: { x: 18, y: 10 },
     }).setOrigin(0.5).setDepth(10);
-    this.helpText = this.add.text(0, 0, isTouchPrimaryDevice()
-      ? '摇杆移动 · 跳跃 / 投掷可同时按住'
-      : 'A/D 或 ←/→ 移动 · 空格跳跃 · J 投掷 · P/Esc 暂停 · M 音效', {
-      fontSize: '14px', color: '#1d2b3a', backgroundColor: '#fff8ec', padding: { x: 8, y: 5 },
-    }).setOrigin(0.5).setDepth(10);
-    this.tweens.add({ targets: this.helpText, alpha: 0, delay: 7000, duration: 1000 });
-    this.pauseText = this.add.text(0, 0, '已暂停\n点击右上角播放按钮或按 P / Esc 继续', {
+    this.skillBar = this.add.rectangle(0, 0, 150, 4, 0xffdf87).setOrigin(0, 0.5).setDepth(11);
+    this.journeyText = this.add.text(0, 0, '', {
+      fontSize: '13px', color: '#416b59', backgroundColor: '#fff7e5', padding: { x: 10, y: 6 },
+    }).setDepth(5);
+    const tutorialPanel = this.add.rectangle(0, 0, 340, 126, 0xfff7e5, 0.98).setStrokeStyle(2, 0xd3bc8b);
+    this.tutorialTitle = this.add.text(0, -36, '', { fontSize: '20px', fontStyle: 'bold', color: '#416b59' }).setOrigin(0.5);
+    this.tutorialHint = this.add.text(0, 0, '', { fontSize: '16px', color: '#604b32', align: 'center', wordWrap: { width: 310 } }).setOrigin(0.5);
+    const skip = this.add.text(0, 42, '跳过引导 · T', { fontSize: '14px', color: '#647963', padding: { x: 20, y: 8 } })
+      .setOrigin(0.5).setInteractive({ useHandCursor: true }).on('pointerup', () => this.game.events.emit('tutorial-skip'));
+    this.tutorial = this.add.container(0, 0, [tutorialPanel, this.tutorialTitle, this.tutorialHint, skip]).setDepth(15);
+    this.pauseText = this.add.text(0, 0, '已暂停\nP / Esc 继续 · R 重玩 · H 返回主页', {
       fontSize: '22px', color: '#ffffff', backgroundColor: '#263b50', align: 'center',
       padding: { x: 18, y: 16 }, wordWrap: { width: 290 },
     }).setOrigin(0.5).setDepth(20).setVisible(false);
+    this.pauseMenu = this.add.container(0, 0).setDepth(21).setVisible(false);
+    for (const [index, label, action] of [[0, '继续冒险', 'pause'], [1, '重玩本关', 'restart'], [2, '返回主页', 'home']] as const) {
+      const button = this.add.text((index - 1) * 105, 0, label, {
+        fontSize: '16px', color: '#fff4cf', backgroundColor: '#416b59', padding: { x: 14, y: 14 },
+      }).setOrigin(0.5).setInteractive({ useHandCursor: true })
+        .on('pointerup', () => this.game.events.emit('game-action', action));
+      this.pauseMenu.add(button);
+    }
     this.hudPanel = this.add.image(0, 0, 'forest-hud').setOrigin(0, 0).setScrollFactor(0);
     this.portraitFrame = this.add.image(0, 0, 'ui-portrait-frame').setScrollFactor(0).setDepth(2);
     this.portrait = this.add.sprite(0, 0, 'characters', 0).setScrollFactor(0).setDepth(3);
@@ -119,7 +136,7 @@ export class UIScene extends Phaser.Scene {
   }
 
   private hudSignature(state: HudState): string {
-    return `${state.health}|${state.score}|${state.coins}|${state.totalCoins}|${state.seconds}|${state.character}|${state.paused}|${state.skillReady}`;
+    return `${state.health}|${state.score}|${state.coins}|${state.totalCoins}|${state.seconds}|${state.character}|${state.paused}|${state.skillReady}|${state.skillCharge.toFixed(2)}|${Math.round(state.progress * 100)}|${state.checkpointReached}|${state.tutorialStep}`;
   }
 
   private hudText(color = '#1d2b3a'): Phaser.GameObjects.Text {
@@ -159,6 +176,21 @@ export class UIScene extends Phaser.Scene {
     this.timerText.setText(`${state.seconds}s`);
     this.pauseButton?.setTexture(state.paused ? 'ui-button-play' : 'ui-button-pause');
     this.pauseText?.setVisible(state.paused);
+    this.pauseMenu?.setVisible(state.paused);
+    const homeButton = this.pauseMenu?.list[2] as Phaser.GameObjects.Text | undefined;
+    homeButton?.setText(state.customMap ? '返回编辑' : '返回主页');
+    this.pauseText?.setText(`已暂停\nP / Esc 继续 · R 重玩 · H ${state.customMap ? '返回编辑' : '返回主页'}`);
+    this.tutorial?.setVisible(state.tutorialStep < 3 && !state.paused);
+    if (state.tutorialStep < 3) {
+      const touch = isTouchPrimaryDevice();
+      const titles = ['1 / 3 · 一起迈出第一步', '2 / 3 · 跳过小台阶', '3 / 3 · 点亮你的星光'];
+      const hints = touch ? ['向左或向右拖动左下角摇杆', '按右下角跳跃按钮，试着跳一次', '按右下角投掷按钮，发射星光弹']
+        : ['按 A / D 或 ← / →，试着走一小段', '按空格、W 或 ↑，试着跳一次', '按 J，发射一颗星光弹'];
+      this.tutorialTitle.setText(titles[state.tutorialStep]);
+      this.tutorialHint.setText(hints[state.tutorialStep]);
+    }
+    this.skillBar?.setScale(state.skillCharge, 1);
+    this.journeyText?.setText(`${state.levelId} · 路程 ${Math.round(state.progress * 100)}%${state.checkpointReached ? ' · 检查点 ✓' : ''}`);
     this.skillText?.setText(state.skillReady ? '✦ 星光弹 · 就绪' : '✦ 星光弹 · 聚光中')
       .setAlpha(state.skillReady ? 1 : 0.65);
   }
@@ -206,9 +238,12 @@ export class UIScene extends Phaser.Scene {
     const height = this.scale.height;
     const layout = computeUILayout(width, height);
     const margin = layout.margin;
-    this.helpText.setPosition(width / 2, isTouchPrimaryDevice() ? margin + layout.hud.height + 18 : height - 18)
-      .setFontSize(width < 760 ? '12px' : '14px');
+    this.tutorial.setPosition(width / 2, Math.max(margin + layout.hud.height + 85, height * 0.34))
+      .setScale(Math.min(1, (width - 28) / 340));
     this.pauseText.setPosition(width / 2, height / 2);
+    this.pauseMenu.setPosition(width / 2, height / 2 + 90);
+    this.journeyText.setPosition(margin, margin + layout.hud.height + 12);
+    this.skillBar.setPosition(width / 2 - 75, height - 42);
     this.skillText.setPosition(width / 2, height - 65).setFontSize(width < 760 ? '13px' : '16px');
     const scale = layout.hud.scale;
     const panelX = layout.hud.x;

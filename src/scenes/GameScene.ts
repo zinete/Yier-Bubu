@@ -12,6 +12,12 @@ import type { CharacterId, GameStatus, HudState } from '../types/game';
 import { CameraManager } from '../systems/CameraManager';
 import { buildForest } from '../systems/ForestArt';
 import { SkillEffects } from '../systems/SkillEffects';
+import { parseCustomMap, playablePlatforms, type CustomMap } from '../systems/CustomMap';
+import { canLandOnPlatform } from '../systems/PlatformPhysics';
+import { mapAssets, DEFAULT_OBJECT_SKINS } from '../systems/DefaultAssets';
+import { assetLayout, readAssetGeometry, type AssetGeometry } from '../systems/AssetGeometry';
+import { materialFor, platformSlices } from '../systems/PlatformMaterial';
+import { CUSTOM_OBJECTS } from '../systems/ObjectGeometry';
 export class GameScene extends Phaser.Scene {
   private player!: Player;
   private inputManager!: InputManager;
@@ -32,18 +38,50 @@ export class GameScene extends Phaser.Scene {
   private lastAttack = 0;
   private effects!: SkillEffects;
   private charging = false;
+  private combatTime = 0;
+  private checkpointReached = false;
+  private tutorialStep = 3;
+  private customMap?: CustomMap;
+  private customTextures = new Map<string, string>();
+  private assetGeometry = new Map<string, AssetGeometry>();
   constructor() {
     super(SCENE.GAME);
   }
-  init(data: { levelId?: string }): void {
-    this.level = getLevel(beginLevel(data.levelId ?? loadProgress().currentLevel));
+  init(data: { levelId?: string; customMap?: CustomMap }): void {
+    this.customTextures.clear();
+    this.assetGeometry.clear();
+    this.customMap = data.customMap ? parseCustomMap(data.customMap) : undefined;
+    this.level = this.customMap ? { ...this.customMap.level, platforms: playablePlatforms(this.customMap) }
+      : getLevel(beginLevel(data.levelId ?? loadProgress().currentLevel));
+  }
+  preload(): void {
+    for (const [index, asset] of (this.customMap ? mapAssets(this.customMap) : []).entries()) {
+      const key = `custom-asset-${Date.now()}-${index}`;
+      this.customTextures.set(asset.id, key);
+      this.load.image(key, asset.data);
+    }
   }
   create(): void {
+    for (const asset of this.customMap ? mapAssets(this.customMap) : []) {
+      const key = this.customTextures.get(asset.id);
+      if (!key || !this.textures.exists(key)) continue;
+      const texture = this.textures.get(key);
+      const frame = texture.get();
+      const bounds = readAssetGeometry(asset.data, texture.getSourceImage() as CanvasImageSource, frame.cutWidth, frame.cutHeight);
+      texture.add('content', 0, bounds.x, bounds.y, bounds.width, bounds.height);
+      this.assetGeometry.set(key, bounds);
+    }
     LevelValidator.validate(this.level.platforms);
     this.physics.world.resume();
-    this.lastAttack = 0;
+    this.lastAttack = -COMBAT.PLAYER_ATTACK_COOLDOWN;
+    this.combatTime = 0;
+    this.checkpointReached = false;
+    try { this.tutorialStep = localStorage.getItem('yierBubuTutorialV1') === 'done' ? 3 : 0; }
+    catch { this.tutorialStep = 0; }
+    if (this.customMap) this.tutorialStep = 3;
     this.charging = false;
     this.time.paused = false;
+    this.tweens.resumeAll();
     this.status = 'playing';
     this.health = 3;
     this.score = 0;
@@ -57,20 +95,37 @@ export class GameScene extends Phaser.Scene {
     this.input.keyboard?.on('keydown-ESC', this.pauseFromKeyboard, this);
     this.input.keyboard?.on('keydown-P', this.pauseFromKeyboard, this);
     this.input.keyboard?.on('keydown-M', this.muteFromKeyboard, this);
+    this.input.keyboard?.on('keydown-R', this.restartFromKeyboard, this);
+    this.input.keyboard?.on('keydown-H', this.homeFromKeyboard, this);
+    this.input.keyboard?.on('keydown-T', this.skipTutorial, this);
+    this.game.events.on('tutorial-skip', this.skipTutorial, this);
     this.createBackground();
     this.effects = new SkillEffects(this);
     this.physics.world.setBounds(0, 0, this.level.width, WORLD_HEIGHT + 400);
     this.platforms = this.physics.add.staticGroup();
-    for (const data of this.level.platforms)
-      this.platforms
+    for (const data of this.level.platforms) {
+      const platform = this.platforms
         .create(data.x, data.y, 'platform')
         .setOrigin(0, 0)
         .setDisplaySize(data.width, data.height)
         .setVisible(false)
         .refreshBody();
+      platform.setData('oneWay', data.kind === 'platform');
+      if (data.kind === 'platform') {
+        const body = platform.body as Phaser.Physics.Arcade.StaticBody;
+        body.checkCollision.down = false;
+        body.checkCollision.left = false;
+        body.checkCollision.right = false;
+      }
+    }
     const character = this.registry.get(REGISTRY.CHARACTER) as CharacterId;
     this.player = new Player(this, this.level.spawn.x, this.level.spawn.y, character);
-    this.physics.add.collider(this.player, this.platforms);
+    this.physics.add.collider(this.player, this.platforms, undefined, (player, platform) => {
+      if (!(platform as Phaser.GameObjects.GameObject).getData('oneWay')) return true;
+      const body = (player as Player).arcadeBody;
+      const surface = (platform as Phaser.Physics.Arcade.Image).body as Phaser.Physics.Arcade.StaticBody;
+      return canLandOnPlatform(body.velocity.y, body.prev.y + body.height, surface.top);
+    });
     this.createCoins();
     this.createEnemies();
     this.createProjectiles();
@@ -80,7 +135,10 @@ export class GameScene extends Phaser.Scene {
       .setDisplaySize(this.level.flag.width, this.level.flag.height)
       .setTint(0xffffff)
       .refreshBody();
-    this.add.rectangle(this.level.flag.x + 7, this.level.flag.y + 15, 24, 48, 0xf2b705);
+    if (this.customMap) {
+      this.goal.setVisible(false);
+      this.drawObjectSkin('flag', this.level.flag, this.level.flag.x, this.level.flag.y, this.level.flag.width, this.level.flag.height);
+    } else this.add.rectangle(this.level.flag.x + 7, this.level.flag.y + 15, 24, 48, 0xf2b705);
     this.add.text(this.level.flag.x - 20, this.level.flag.y - 24, '终点', {
       fontSize: '16px',
       color: '#1d2b3a',
@@ -118,7 +176,7 @@ export class GameScene extends Phaser.Scene {
       delay: 1000,
       loop: true,
       callback: () => {
-        if (this.status === 'playing') {
+        if (this.status === 'playing' && this.tutorialStep === 3) {
           this.seconds -= 1;
           if (this.seconds <= 0) this.finish(false, '时间到！再试一次吧。');
           this.publishHud();
@@ -129,12 +187,15 @@ export class GameScene extends Phaser.Scene {
     this.events.once(Phaser.Scenes.Events.SHUTDOWN, () => this.destroyGameScene());
     this.publishHud();
   }
-  update(time: number): void {
+  update(_time: number, delta: number): void {
     if (this.status !== 'playing') return;
+    const time = this.combatTime += delta;
     this.inputManager.update();
     this.player.updatePlayer(time, this.inputManager);
+    if (this.tutorialStep === 0 && Math.abs(this.player.x - this.level.spawn.x) >= 60) this.tutorialStep = 1;
     this.enemies.children.each((child) => {
       const enemy = child as Enemy;
+      if (this.tutorialStep < 3) { enemy.setVelocityX(0); return true; }
       enemy.patrol();
       const attack = enemy.getAttack(time, this.player.x);
       if (attack) {
@@ -164,19 +225,73 @@ export class GameScene extends Phaser.Scene {
         const shot = this.playerProjectiles.getFirstDead(false) as Projectile | null;
         if (!shot) return;
         shot.fire(this.player.x + this.player.direction * 35, this.player.y - 45,
-          this.player.direction, this.time.now, 'player', {
+          this.player.direction, this.combatTime, 'player', {
             speed: COMBAT.PLAYER_PROJECTILE_SPEED, arc: COMBAT.PLAYER_PROJECTILE_ARC,
             gravity: COMBAT.PLAYER_PROJECTILE_GRAVITY, lifetime: COMBAT.PLAYER_PROJECTILE_LIFETIME,
           });
         this.audioManager.play('throw');
+        if (this.tutorialStep === 2) this.skipTutorial();
       });
     }
     if (this.player.y > WORLD_HEIGHT + 65) this.damage(true);
-    if (this.player.x > this.level.checkpoint.x) this.checkpoint = this.level.checkpoint;
+    if (!this.checkpointReached && this.player.x > this.level.checkpoint.x) {
+      this.checkpointReached = true;
+      this.checkpoint = this.level.checkpoint;
+      this.feedback(this.player.x, this.player.y - 100, '检查点已激活', 0x95f0e3);
+      this.effects.impact(this.player.x, this.player.y - 40);
+      this.audioManager.play('coin');
+    }
     this.publishHud();
   }
   private createBackground(): void {
-    buildForest(this, this.level);
+    const settings = this.customMap?.scene;
+    const bgAsset = this.customMap ? mapAssets(this.customMap).find((asset) => asset.id === settings?.backgroundAssetId) : undefined;
+    buildForest(this, this.level, this.customMap?.title, settings?.theme, !!bgAsset, settings?.parallax);
+    if (bgAsset && settings) {
+      const key = this.customTextures.get(bgAsset.id);
+      if (key && this.textures.exists(key)) {
+        if (settings.backgroundMode === 'repeat') {
+          const ratio = 540 / this.textures.get(key).get().cutHeight;
+          const background = this.add.tileSprite(0, 0, this.level.width, 540, key).setOrigin(0)
+            .setDepth(-26).setScrollFactor(settings.parallax);
+          background.setTileScale(ratio, ratio);
+        } else this.add.image(0, 0, key).setOrigin(0).setDisplaySize(this.level.width, 540)
+          .setDepth(-26).setScrollFactor(settings.parallax);
+      }
+    }
+    for (const object of this.customMap?.decorations ?? []) {
+      if (object.solid) continue; // 已作为真正的平台渲染并参与碰撞，避免重复绘制。
+      const key = this.customTextures.get(object.assetId);
+      if (key && this.textures.exists(key))
+        this.add.image(object.x, object.y, key).setOrigin(0).setDisplaySize(object.width, object.height).setDepth(object.layer === 'front' ? 6 : -1);
+    }
+    if (this.customMap) {
+      for (const p of this.level.platforms) this.drawObjectSkin('platform', p, p.x, p.y, p.width, p.height, -2);
+      for (const kind of ['spawn', 'checkpoint'] as const) {
+        const p = this.level[kind]; this.drawObjectSkin(kind, p, p.x, p.y - 64, 32, 64, -1);
+      }
+    }
+  }
+  private skinKey(kind: string, value: { assetId?: string; x: number; y: number }): string | undefined {
+    return this.customMap ? this.customTextures.get(value.assetId ?? DEFAULT_OBJECT_SKINS[kind]) : undefined;
+  }
+  private drawObjectSkin(kind: string, value: { assetId?: string; x: number; y: number }, x: number, y: number, width: number, height: number, depth = 0): void {
+    const key = this.skinKey(kind, value);
+    if (key && this.textures.exists(key)) {
+      const geometry = this.assetGeometry.get(key);
+      if (kind === 'platform' && geometry) {
+        const material = materialFor(value.assetId ?? DEFAULT_OBJECT_SKINS.platform, this.customMap?.platformMaterials);
+        const texture = this.textures.get(key);
+        for (const p of platformSlices(geometry, material, x, y, width, height)) {
+          const frame = `platform-${p.sx}-${p.sw}`;
+          if (!texture.has(frame)) texture.add(frame, 0, p.sx, p.sy, p.sw, p.sh);
+          this.add.image(p.x, p.y, key, frame).setOrigin(0).setDisplaySize(p.drawWidth, p.height).setFlipX(p.flipX).setDepth(depth);
+        }
+        return;
+      }
+      const layout = geometry ? assetLayout(geometry, x, y, width, height, kind === 'platform') : { x, y, width, height };
+      this.add.image(layout.x, layout.y, key, geometry ? 'content' : undefined).setOrigin(0).setDisplaySize(layout.width, layout.height).setDepth(depth);
+    }
   }
   private createCoins(): void {
     this.coins = this.physics.add.group({ allowGravity: false, immovable: true });
@@ -184,13 +299,25 @@ export class GameScene extends Phaser.Scene {
       const position = Array.isArray(point) ? { x: point[0], y: point[1] } : point;
       const coin = this.coins.create(position.x, position.y, 'coin') as Phaser.Physics.Arcade.Image;
       coin.setTexture('magic-star').setScale(0.7).setTint(0xffdb73);
+      const key = this.skinKey('coin', position);
+      const size = CUSTOM_OBJECTS.coin;
+      if (key && this.textures.exists(key)) coin.setTexture(key, 'content').setDisplaySize(size.width, size.height).clearTint();
       coin.setCircle(12).setData('taken', false);
+      if (key) {
+        const body = coin.body as Phaser.Physics.Arcade.Body;
+        const width = size.bodyWidth / coin.scaleX, height = size.bodyHeight / coin.scaleY;
+        body.setSize(width, height).setOffset((coin.width - width) / 2, (coin.height - height) / 2);
+      }
       this.tweens.add({ targets: coin, y: position.y - 5, duration: 700, yoyo: true, repeat: -1 });
     }
   }
   private createEnemies(): void {
     this.enemies = this.physics.add.group({ classType: Enemy, runChildUpdate: false, allowGravity: true, gravityY: 1450 });
-    for (const data of this.level.enemies) this.enemies.add(new Enemy(this, data), true);
+    for (const data of this.level.enemies) {
+      const enemy = new Enemy(this, data); this.enemies.add(enemy, true);
+      const key = this.skinKey('enemy', data);
+      if (key && this.textures.exists(key)) enemy.applySkin(key, 'content');
+    }
     this.physics.add.collider(this.enemies, this.platforms);
   }
   private createProjectiles(): void {
@@ -241,7 +368,9 @@ export class GameScene extends Phaser.Scene {
     } else this.damage(false, enemy.x);
   }
   private damage(fall: boolean, sourceX = this.player.x): void {
-    const damaged = this.player.hurt(this.time.now, sourceX);
+    if (this.status !== 'playing') return;
+    if (this.tutorialStep < 3) { if (fall) this.respawnAtCheckpoint(); return; }
+    const damaged = this.player.hurt(this.combatTime, sourceX);
     // 无敌帧只防止连续扣血；不能阻止受击后跌出场景的角色回到检查点。
     if (!damaged) {
       if (fall) this.respawnAtCheckpoint();
@@ -266,23 +395,33 @@ export class GameScene extends Phaser.Scene {
     if (this.status !== 'playing') return;
     this.status = won ? 'won' : 'lost';
     this.physics.world.pause();
+    this.time.paused = true;
+    this.effects.setPaused(true);
+    this.tweens.pauseAll();
     this.audioManager.setMusicPaused(true);
-    if (won) completeLevel(this.level.id, this.score, this.collected === this.level.coins.length);
+    if (won && !this.customMap) completeLevel(this.level.id, this.score, this.collected === this.level.coins.length);
     this.audioManager.play(won ? 'win' : 'lose');
     this.scene.pause(SCENE.UI);
     this.scene.launch(SCENE.RESULT, {
       won,
       levelId: this.level.id,
-      nextLevelId: won ? nextLevelId(this.level.id) : undefined,
+      customMap: this.customMap,
+      nextLevelId: won && !this.customMap ? nextLevelId(this.level.id) : undefined,
       message:
         message ??
-        (won && !nextLevelId(this.level.id) ? '两关全部完成！感谢陪伴这段冒险。' : this.collected === this.level.coins.length
+        (this.customMap ? (won ? '自定义地图通关！可以返回工坊继续完善。' : '再试一次，或返回工坊调整地图。') : won && !nextLevelId(this.level.id) ? '两关全部完成！感谢陪伴这段冒险。' : this.collected === this.level.coins.length
           ? '完美通关，星星全收集！'
           : '抵达终点，继续保持！'),
       score: this.score,
     });
   }
-  private handleAction(action: 'pause' | 'sound'): void {
+  private handleAction(action: 'pause' | 'sound' | 'restart' | 'home'): void {
+    if ((action === 'restart' || action === 'home') && this.status === 'paused') {
+      this.scene.stop(SCENE.UI);
+      if (action === 'restart') this.scene.restart({ levelId: this.level.id, customMap: this.customMap });
+      else this.scene.start(this.customMap ? SCENE.EDITOR : SCENE.START);
+      return;
+    }
     if (action === 'sound') {
       this.audioManager.toggleSound();
       return;
@@ -307,20 +446,43 @@ export class GameScene extends Phaser.Scene {
       seconds: this.seconds,
       character: this.player.character,
       paused: this.status === 'paused',
-      skillReady: !this.charging && this.time.now - this.lastAttack >= COMBAT.PLAYER_ATTACK_COOLDOWN,
+      skillReady: !this.charging && this.combatTime - this.lastAttack >= COMBAT.PLAYER_ATTACK_COOLDOWN,
+      skillCharge: Phaser.Math.Clamp((this.combatTime - this.lastAttack) / COMBAT.PLAYER_ATTACK_COOLDOWN, 0, 1),
+      levelId: this.level.id,
+      progress: Phaser.Math.Clamp(this.player.x / this.level.flag.x, 0, 1),
+      checkpointReached: this.checkpointReached,
+      tutorialStep: this.tutorialStep,
+      customMap: !!this.customMap,
     };
     this.registry.set('hud', state);
   }
   private destroyGameScene(): void {
+    for (const key of this.customTextures.values()) this.textures.remove(key);
+    this.customTextures.clear();
+    this.assetGeometry.clear();
     this.game.events.off('game-action', this.handleAction, this);
     this.game.events.off('player-jump', this.onJump, this);
     this.input.keyboard?.off('keydown-ESC', this.pauseFromKeyboard, this);
     this.input.keyboard?.off('keydown-P', this.pauseFromKeyboard, this);
     this.input.keyboard?.off('keydown-M', this.muteFromKeyboard, this);
+    this.input.keyboard?.off('keydown-R', this.restartFromKeyboard, this);
+    this.input.keyboard?.off('keydown-H', this.homeFromKeyboard, this);
+    this.input.keyboard?.off('keydown-T', this.skipTutorial, this);
+    this.game.events.off('tutorial-skip', this.skipTutorial, this);
   }
-  private onJump(): void { this.audioManager.play('jump'); }
+  private onJump(): void {
+    this.audioManager.play('jump');
+    if (this.tutorialStep === 1) this.tutorialStep = 2;
+  }
+  private skipTutorial(): void {
+    this.tutorialStep = 3;
+    try { localStorage.setItem('yierBubuTutorialV1', 'done'); } catch { /* 下次可再次引导。 */ }
+    this.publishHud();
+  }
   private pauseFromKeyboard(): void { this.handleAction('pause'); }
   private muteFromKeyboard(): void { this.handleAction('sound'); }
+  private restartFromKeyboard(): void { this.handleAction('restart'); }
+  private homeFromKeyboard(): void { this.handleAction('home'); }
   private feedback(x: number, y: number, text: string, color: number): void {
     const label = this.add.text(x, y, text, {
       fontSize: '20px', fontStyle: 'bold', color: '#1d2b3a', stroke: '#ffffff', strokeThickness: 4,

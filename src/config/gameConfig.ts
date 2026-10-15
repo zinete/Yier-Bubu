@@ -5,6 +5,7 @@ import { StartScene } from '../scenes/StartScene';
 import { GameScene } from '../scenes/GameScene';
 import { UIScene } from '../scenes/UIScene';
 import { ResultScene } from '../scenes/ResultScene';
+import { EditorScene } from '../scenes/EditorScene';
 export const gameConfig: Phaser.Types.Core.GameConfig = {
   type: Phaser.AUTO,
   parent: 'app',
@@ -18,5 +19,5 @@ export const gameConfig: Phaser.Types.Core.GameConfig = {
     autoRound: true,
   },
   render: { roundPixels: true, antialias: true },
-  scene: [BootScene, PreloadScene, StartScene, GameScene, UIScene, ResultScene],
+  scene: [BootScene, PreloadScene, StartScene, GameScene, UIScene, ResultScene, EditorScene],
 };

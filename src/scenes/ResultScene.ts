@@ -1,12 +1,14 @@
 import Phaser from 'phaser';
 import { SCENE } from '../config/constants';
 import { ViewportManager } from '../systems/ViewportManager';
+import type { CustomMap } from '../systems/CustomMap';
 interface ResultData {
   won: boolean;
   message: string;
   score: number;
   levelId: string;
   nextLevelId?: string;
+  customMap?: CustomMap;
 }
 
 const FONT = "'Microsoft YaHei', 'PingFang SC', 'Noto Sans CJK SC', sans-serif";
@@ -31,7 +33,7 @@ export class ResultScene extends Phaser.Scene {
     panel.add(this.add.rectangle(0, 0, 500, 316, 0xfff8ec, 0.98).setStrokeStyle(4, accent));
     panel.add(
       this.add
-        .text(0, -102, data.won ? (data.nextLevelId ? '通关成功！' : '冒险全部完成！') : '挑战失败', {
+        .text(0, -102, data.won ? (data.customMap || data.nextLevelId ? '通关成功！' : '冒险全部完成！') : '挑战失败', {
           fontFamily: FONT,
           fontSize: '42px',
           fontStyle: 'bold',
@@ -90,7 +92,7 @@ export class ResultScene extends Phaser.Scene {
       )
       .on('pointerup', () => this.restartGame());
     panel.add(restart);
-    const navigation = this.add.text(480, 465, '重玩本关        返回主页', {
+    const navigation = this.add.text(480, 465, data.customMap ? '重玩地图        返回编辑' : '重玩本关        返回主页', {
       fontFamily: FONT, fontSize: '22px', color: '#ffffff',
     }).setOrigin(0.5).setInteractive({ useHandCursor: true });
     navigation.on('pointerup', (pointer: Phaser.Input.Pointer) => {
@@ -125,7 +127,8 @@ export class ResultScene extends Phaser.Scene {
     this.time.delayedCall(0, () => {
       this.scene.stop(SCENE.UI);
       this.scene.stop(SCENE.GAME);
-      this.scene.start(scene, { levelId });
+      this.scene.start(scene === SCENE.START && this.result.customMap ? SCENE.EDITOR : scene,
+        { levelId, customMap: this.result.customMap });
     });
   }
 }

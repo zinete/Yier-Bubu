@@ -8,7 +8,7 @@
     "build": "tsc --noEmit && vite build",
     "preview": "vite preview",
     "lint": "eslint .",
-    "test": "node tests/progress.test.mjs"
+    "test": "node tests/progress.test.mjs && node tests/custom-map.test.mjs && node tests/asset-geometry.test.mjs && node tests/platform-physics.test.mjs && node tests/platform-material.test.mjs && node tests/editor-grid.test.mjs && node tests/scene-preview.test.mjs && node tests/editor-clipboard.test.mjs"
   },
   "dependencies": {
     "phaser": "3.90.0"

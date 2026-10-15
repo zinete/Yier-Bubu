@@ -39,4 +39,5 @@ export const SCENE = {
   GAME: 'GameScene',
   UI: 'UIScene',
   RESULT: 'ResultScene',
+  EDITOR: 'EditorScene',
 } as const;
