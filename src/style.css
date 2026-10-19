@@ -107,6 +107,8 @@ canvas {
   font: inherit; cursor: pointer; touch-action: manipulation;
 }
 .release-support :focus-visible { outline: 3px solid #2f80ed; outline-offset: 2px; }
+.release-support select { display: block; width: 100%; min-height: 44px; margin-top: 8px; padding: 8px; font: inherit; font-size: 16px; }
+.release-support input[type="checkbox"] { width: 22px; height: 22px; vertical-align: middle; margin-right: 8px; }
 
 @media (orientation: portrait) and (pointer: coarse) {
   #app::after {

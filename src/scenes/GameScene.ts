@@ -19,6 +19,9 @@ import { assetLayout, readAssetGeometry, type AssetGeometry } from '../systems/A
 import { materialFor, platformSlices } from '../systems/PlatformMaterial';
 import { CUSTOM_OBJECTS } from '../systems/ObjectGeometry';
 import { mountSceneLayers } from '../systems/SceneLayers';
+import { AwakeningWorld } from '../systems/AwakeningWorld';
+import { awakeningDemo } from '../levels/awakeningDemo';
+import { BubbleShield, SHIELD } from '../systems/BubbleShield';
 export class GameScene extends Phaser.Scene {
   private player!: Player;
   private inputManager!: InputManager;
@@ -29,6 +32,10 @@ export class GameScene extends Phaser.Scene {
   private enemyProjectiles!: Phaser.Physics.Arcade.Group;
   private coins!: Phaser.Physics.Arcade.Group;
   private goal!: Phaser.Physics.Arcade.Image;
+  private goalLabel!: Phaser.GameObjects.Text;
+  private awakening?: AwakeningWorld;
+  private demo = false;
+  private goalHintAt = -2000;
   private status: GameStatus = 'playing';
   private leaving = false;
   private health = 3;
@@ -41,6 +48,7 @@ export class GameScene extends Phaser.Scene {
   private effects!: SkillEffects;
   private charging = false;
   private combatTime = 0;
+  private shield = new BubbleShield();
   private checkpointReached = false;
   private tutorialStep = 3;
   private customMap?: CustomMap;
@@ -49,12 +57,13 @@ export class GameScene extends Phaser.Scene {
   constructor() {
     super(SCENE.GAME);
   }
-  init(data: { levelId?: string; customMap?: CustomMap }): void {
+  init(data: { levelId?: string; customMap?: CustomMap; demo?: boolean }): void {
     this.customTextures.clear();
     this.assetGeometry.clear();
     this.customMap = data.customMap ? parseCustomMap(data.customMap) : undefined;
+    this.demo = data.demo === true && !this.customMap;
     this.level = this.customMap ? { ...this.customMap.level, platforms: playablePlatforms(this.customMap) }
-      : getLevel(beginLevel(data.levelId ?? loadProgress().currentLevel));
+      : this.demo ? awakeningDemo : getLevel(beginLevel(data.levelId ?? loadProgress().currentLevel));
   }
   preload(): void {
     for (const [index, asset] of (this.customMap ? runtimeMapAssets(this.customMap) : []).entries()) {
@@ -77,10 +86,12 @@ export class GameScene extends Phaser.Scene {
     this.physics.world.resume();
     this.lastAttack = -COMBAT.PLAYER_ATTACK_COOLDOWN;
     this.combatTime = 0;
+    this.shield = new BubbleShield();
     this.checkpointReached = false;
+    this.goalHintAt = -2000;
     try { this.tutorialStep = localStorage.getItem('yierBubuTutorialV1') === 'done' ? 3 : 0; }
     catch { this.tutorialStep = 0; }
-    if (this.customMap) this.tutorialStep = 3;
+    if (this.customMap || this.demo) this.tutorialStep = 3;
     this.charging = false;
     this.time.paused = false;
     this.tweens.resumeAll();
@@ -106,6 +117,7 @@ export class GameScene extends Phaser.Scene {
     this.effects = new SkillEffects(this);
     this.physics.world.setBounds(0, 0, this.level.width, WORLD_HEIGHT + 400);
     this.platforms = this.physics.add.staticGroup();
+    const platformBodies = new Map<string, Phaser.Physics.Arcade.Image>();
     for (const data of this.level.platforms) {
       const platform = this.platforms
         .create(data.x, data.y, 'platform')
@@ -114,6 +126,7 @@ export class GameScene extends Phaser.Scene {
         .setVisible(false)
         .refreshBody();
       platform.setData('oneWay', data.kind === 'platform');
+      platformBodies.set(data.id, platform);
       if (data.kind === 'platform') {
         const body = platform.body as Phaser.Physics.Arcade.StaticBody;
         body.checkCollision.down = false;
@@ -133,6 +146,10 @@ export class GameScene extends Phaser.Scene {
     this.createCoins();
     this.createEnemies();
     this.createProjectiles();
+    this.awakening = this.level.platforms.some((p) => p.awakening) ? new AwakeningWorld(this, this.level, platformBodies,
+      this.playerProjectiles, this.effects, () => this.status === 'playing', () => this.combatTime, (x, y) => {
+        this.feedback(x, y - 65, '星光唤醒！', 0xffd97d); this.audioManager.play('coin'); this.publishHud();
+      }, (p) => this.drawObjectSkin('platform', p, p.x, p.y, p.width, p.height, -1)) : undefined;
     this.goal = this.physics.add
       .staticImage(this.level.flag.x, this.level.flag.y, 'platform')
       .setOrigin(0, 0)
@@ -143,10 +160,11 @@ export class GameScene extends Phaser.Scene {
       this.goal.setVisible(false);
       this.drawObjectSkin('flag', this.level.flag, this.level.flag.x, this.level.flag.y, this.level.flag.width, this.level.flag.height);
     } else this.add.rectangle(this.level.flag.x + 7, this.level.flag.y + 15, 24, 48, 0xf2b705);
-    this.add.text(this.level.flag.x - 20, this.level.flag.y - 24, '终点', {
+    this.goalLabel = this.add.text(this.level.flag.x - 20, this.level.flag.y - 24, '终点', {
       fontSize: '16px',
       color: '#1d2b3a',
     });
+    if (this.awakening?.summary.goalLocked) this.goalLabel.setText('星门 · 唤醒所有花苞');
     this.physics.add.overlap(this.player, this.coins, (_, coin) =>
       this.collect(coin as Phaser.Physics.Arcade.Image),
     );
@@ -174,7 +192,7 @@ export class GameScene extends Phaser.Scene {
       this.damage(false, sourceX);
       this.publishHud();
     });
-    this.physics.add.overlap(this.player, this.goal, () => this.finish(true));
+    this.physics.add.overlap(this.player, this.goal, () => this.tryGoal());
     CameraManager.attach(this, this.player, this.level.width);
     this.scene.launch(SCENE.UI);
     this.time.addEvent({
@@ -193,12 +211,22 @@ export class GameScene extends Phaser.Scene {
     this.game.events.on('hidden', this.pauseWhenUnfocused, this);
     this.events.once(Phaser.Scenes.Events.SHUTDOWN, () => this.destroyGameScene());
     this.publishHud();
+    if (this.demo) this.feedback(this.level.spawn.x + 170, this.level.spawn.y - 120, '星光弹击中花苞 → 跳台亮起 8 秒\n唤醒三朵花，打开星门', 0xffd97d);
   }
   update(_time: number, delta: number): void {
     if (this.status !== 'playing') return;
     const time = this.combatTime += delta;
+    this.effects.update(delta);
+    this.awakening?.update(time);
+    const goalLocked = this.awakening?.summary.goalLocked;
+    this.goalLabel.setText(goalLocked ? '星门 · 唤醒所有花苞' : this.awakening ? '星门已开启' : '终点');
     this.inputManager.update();
     this.player.updatePlayer(time, this.inputManager);
+    if (this.inputManager.consumeShield() && this.tutorialStep === 3 && this.shield.activate(time)) {
+      this.audioManager.play('shield-on');
+      this.effects.shieldPulse(this.player.x, this.player.y - 44);
+    }
+    this.syncShield();
     if (this.tutorialStep === 0 && Math.abs(this.player.x - this.level.spawn.x) >= 60) this.tutorialStep = 1;
     this.enemies.children.each((child) => {
       const enemy = child as Enemy;
@@ -236,6 +264,7 @@ export class GameScene extends Phaser.Scene {
             speed: COMBAT.PLAYER_PROJECTILE_SPEED, arc: COMBAT.PLAYER_PROJECTILE_ARC,
             gravity: COMBAT.PLAYER_PROJECTILE_GRAVITY, lifetime: COMBAT.PLAYER_PROJECTILE_LIFETIME,
           });
+        this.effects.decorateProjectile(shot);
         this.audioManager.play('throw');
         if (this.tutorialStep === 2) this.skipTutorial();
       });
@@ -245,7 +274,7 @@ export class GameScene extends Phaser.Scene {
       this.checkpointReached = true;
       this.checkpoint = this.level.checkpoint;
       this.feedback(this.player.x, this.player.y - 100, '检查点已激活', 0x95f0e3);
-      this.effects.impact(this.player.x, this.player.y - 40);
+      this.effects.awaken(this.player.x, this.player.y - 40);
       this.audioManager.play('coin');
     }
     this.publishHud();
@@ -274,7 +303,7 @@ export class GameScene extends Phaser.Scene {
         this.add.image(object.x, object.y, key).setOrigin(0).setDisplaySize(object.width, object.height).setDepth(object.layer === 'front' ? 6 : -1);
     }
     if (this.customMap) {
-      for (const p of this.level.platforms) this.drawObjectSkin('platform', p, p.x, p.y, p.width, p.height, -2);
+      for (const p of this.level.platforms) if (!p.awakening) this.drawObjectSkin('platform', p, p.x, p.y, p.width, p.height, -2);
       for (const kind of ['spawn', 'checkpoint'] as const) {
         const p = this.level[kind]; this.drawObjectSkin(kind, p, p.x, p.y - 64, 32, 64, -1);
       }
@@ -283,7 +312,8 @@ export class GameScene extends Phaser.Scene {
   private skinKey(kind: string, value: { assetId?: string; x: number; y: number }): string | undefined {
     return this.customMap ? this.customTextures.get(value.assetId ?? DEFAULT_OBJECT_SKINS[kind]) : undefined;
   }
-  private drawObjectSkin(kind: string, value: { assetId?: string; x: number; y: number }, x: number, y: number, width: number, height: number, depth = 0): void {
+  private drawObjectSkin(kind: string, value: { assetId?: string; x: number; y: number }, x: number, y: number, width: number, height: number, depth = 0): Phaser.GameObjects.Image[] {
+    const images: Phaser.GameObjects.Image[] = [];
     const key = this.skinKey(kind, value);
     if (key && this.textures.exists(key)) {
       const geometry = this.assetGeometry.get(key);
@@ -293,13 +323,14 @@ export class GameScene extends Phaser.Scene {
         for (const p of platformSlices(geometry, material, x, y, width, height)) {
           const frame = `platform-${p.sx}-${p.sw}`;
           if (!texture.has(frame)) texture.add(frame, 0, p.sx, p.sy, p.sw, p.sh);
-          this.add.image(p.x, p.y, key, frame).setOrigin(0).setDisplaySize(p.drawWidth, p.height).setFlipX(p.flipX).setDepth(depth);
+          images.push(this.add.image(p.x, p.y, key, frame).setOrigin(0).setDisplaySize(p.drawWidth, p.height).setFlipX(p.flipX).setDepth(depth));
         }
-        return;
+        return images;
       }
       const layout = geometry ? assetLayout(geometry, x, y, width, height, kind === 'platform') : { x, y, width, height };
-      this.add.image(layout.x, layout.y, key, geometry ? 'content' : undefined).setOrigin(0).setDisplaySize(layout.width, layout.height).setDepth(depth);
+      images.push(this.add.image(layout.x, layout.y, key, geometry ? 'content' : undefined).setOrigin(0).setDisplaySize(layout.width, layout.height).setDepth(depth));
     }
+    return images;
   }
   private createCoins(): void {
     this.coins = this.physics.add.group({ allowGravity: false, immovable: true });
@@ -377,7 +408,20 @@ export class GameScene extends Phaser.Scene {
   }
   private damage(fall: boolean, sourceX = this.player.x): void {
     if (this.status !== 'playing') return;
+    // Falls bypass both the shield and its contact grace. Keep the existing hurt-invulnerability policy.
+    if (fall) { this.shield.cancel(); this.syncShield(); }
     if (this.tutorialStep < 3) { if (fall) this.respawnAtCheckpoint(); return; }
+    if (!fall && !this.player.isInvulnerable(this.combatTime)) {
+      if (this.shield.blocksFollowup(this.combatTime)) return;
+      if (this.shield.absorb(this.combatTime)) {
+        this.syncShield();
+        this.effects.shieldPulse(this.player.x, this.player.y - 44, true);
+        this.feedback(this.player.x, this.player.y - 110, '守护抵挡！', 0xa5eeff);
+        this.audioManager.play('shield-block');
+        this.publishHud();
+        return;
+      }
+    }
     const damaged = this.player.hurt(this.combatTime, sourceX);
     // 无敌帧只防止连续扣血；不能阻止受击后跌出场景的角色回到检查点。
     if (!damaged) {
@@ -386,7 +430,7 @@ export class GameScene extends Phaser.Scene {
     }
     this.health -= 1;
     this.feedback(this.player.x, this.player.y - 80, '−1 ♥', 0xff6666);
-    this.cameras.main.shake(100, 0.003);
+    if (this.effects.allowMotion) this.cameras.main.shake(100, 0.003);
     this.publishHud();
     this.audioManager.play('hurt');
     if (this.health <= 0) {
@@ -402,34 +446,44 @@ export class GameScene extends Phaser.Scene {
   private finish(won: boolean, message?: string): void {
     if (this.status !== 'playing') return;
     this.status = won ? 'won' : 'lost';
+    this.shield.cancel(); this.syncShield();
     this.inputManager.reset();
     this.physics.world.pause();
     this.time.paused = true;
     this.effects.setPaused(true);
     this.tweens.pauseAll();
     this.audioManager.setMusicPaused(true);
-    if (won && !this.customMap) completeLevel(this.level.id, this.score, this.collected === this.level.coins.length);
+    if (won && !this.customMap && !this.demo) completeLevel(this.level.id, this.score, this.collected === this.level.coins.length);
     this.audioManager.play(won ? 'win' : 'lose');
     this.scene.pause(SCENE.UI);
     this.scene.launch(SCENE.RESULT, {
       won,
       levelId: this.level.id,
       customMap: this.customMap,
-      nextLevelId: won && !this.customMap ? nextLevelId(this.level.id) : undefined,
+      demo: this.demo,
+      nextLevelId: won && !this.customMap && !this.demo ? nextLevelId(this.level.id) : undefined,
       message:
         message ??
-        (this.customMap ? (won ? '自定义地图通关！可以返回工坊继续完善。' : '再试一次，或返回工坊调整地图。') : won && !nextLevelId(this.level.id) ? '两关全部完成！感谢陪伴这段冒险。' : this.collected === this.level.coins.length
+        (this.demo ? (won ? '三朵星花已唤醒！你让森林重新亮了起来。' : '花苞可重复击中，重新点亮限时平台。') : this.customMap ? (won ? '自定义地图通关！可以返回工坊继续完善。' : '再试一次，或返回工坊调整地图。') : won && !nextLevelId(this.level.id) ? '两关全部完成！感谢陪伴这段冒险。' : this.collected === this.level.coins.length
           ? '完美通关，星星全收集！'
           : '抵达终点，继续保持！'),
       score: this.score,
     });
+  }
+  private tryGoal(): void {
+    if (this.status !== 'playing') return;
+    if (!this.awakening?.summary.goalLocked) { this.finish(true); return; }
+    if (this.combatTime - this.goalHintAt < 1500) return;
+    this.goalHintAt = this.combatTime;
+    const { lit, total } = this.awakening.summary;
+    this.feedback(this.player.x, this.player.y - 100, `星门未开启 · 花苞 ${lit}/${total}`, 0xffd97d);
   }
   private handleAction(action: 'pause' | 'sound' | 'restart' | 'home'): void {
     if (action === 'restart' || action === 'home') {
       if (this.status !== 'paused' || this.leaving) return;
       this.leaving = true;
       this.scene.stop(SCENE.UI);
-      if (action === 'restart') this.scene.restart({ levelId: this.level.id, customMap: this.customMap });
+      if (action === 'restart') this.scene.restart({ levelId: this.level.id, customMap: this.customMap, demo: this.demo });
       else this.scene.start(this.customMap ? SCENE.EDITOR : SCENE.START);
       return;
     }
@@ -465,10 +519,17 @@ export class GameScene extends Phaser.Scene {
       checkpointReached: this.checkpointReached,
       tutorialStep: this.tutorialStep,
       customMap: !!this.customMap,
+      awakening: this.awakening?.summary,
+      shield: this.shield.state(this.combatTime),
     };
     this.registry.set('hud', state);
   }
+  private syncShield(): void {
+    const state = this.shield.state(this.combatTime);
+    this.effects.syncShield(this.player.x, this.player.y - 44, state.active, state.activeMs / SHIELD.DURATION);
+  }
   private destroyGameScene(): void {
+    this.awakening?.destroy(); this.awakening = undefined;
     for (const key of this.customTextures.values()) this.textures.remove(key);
     this.customTextures.clear();
     this.assetGeometry.clear();

@@ -9,6 +9,7 @@ interface ResultData {
   levelId: string;
   nextLevelId?: string;
   customMap?: CustomMap;
+  demo?: boolean;
 }
 
 const FONT = "'Microsoft YaHei', 'PingFang SC', 'Noto Sans CJK SC', sans-serif";
@@ -33,7 +34,7 @@ export class ResultScene extends Phaser.Scene {
     panel.add(this.add.rectangle(0, 0, 500, 316, 0xfff8ec, 0.98).setStrokeStyle(4, accent));
     panel.add(
       this.add
-        .text(0, -102, data.won ? (data.customMap || data.nextLevelId ? '通关成功！' : '冒险全部完成！') : '挑战失败', {
+        .text(0, -102, data.won ? (data.demo ? '星光森林已唤醒！' : data.customMap || data.nextLevelId ? '通关成功！' : '冒险全部完成！') : '挑战失败', {
           fontFamily: FONT,
           fontSize: '42px',
           fontStyle: 'bold',
@@ -128,7 +129,7 @@ export class ResultScene extends Phaser.Scene {
       this.scene.stop(SCENE.UI);
       this.scene.stop(SCENE.GAME);
       this.scene.start(scene === SCENE.START && this.result.customMap ? SCENE.EDITOR : scene,
-        { levelId, customMap: this.result.customMap });
+        { levelId, customMap: this.result.customMap, demo: this.result.demo });
     });
   }
 }

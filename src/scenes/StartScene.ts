@@ -13,6 +13,7 @@ import type { CharacterId } from '../types/game';
 import { levels } from '../levels';
 import { loadProgress } from '../systems/ProgressStore';
 import { openFeedback } from '../systems/ReleaseSupport';
+import { openEffectPanel } from '../systems/EffectPanel';
 
 const WIDTH = 1920;
 const HEIGHT = 1080;
@@ -63,6 +64,13 @@ export class StartScene extends Phaser.Scene {
 
     this.createCharacterCards();
     this.createStartButton();
+    const awakening = this.add.container(350, 865);
+    awakening.add(this.add.image(0, 0, 'start-button-secondary').setDisplaySize(300, 150));
+    awakening.add(this.add.text(0, 0, '星光唤醒\n体验关', {
+      fontFamily: FONT, fontSize: '40px', color: '#77512d', align: 'center', fontStyle: 'bold',
+    }).setOrigin(0.5).setResolution(TEXT_RESOLUTION));
+    awakening.setSize(300, 150).setInteractive(new Phaser.Geom.Rectangle(-150, -75, 300, 150), Phaser.Geom.Rectangle.Contains)
+      .on('pointerup', () => this.startAwakeningDemo());
     this.createUtilityButtons();
     this.createSettingsModal();
     this.editorEntry = this.add.text(WIDTH / 2, 975, '✦ 地图工坊 · 创建自己的冒险', {
@@ -80,7 +88,7 @@ export class StartScene extends Phaser.Scene {
       if (unlocked) entry.setInteractive({ useHandCursor: true }).on('pointerup', () => this.startGame(level.id));
     });
     this.bindKeyboard();
-    this.add.text(WIDTH / 2, 780, '← / → 选角色 · Enter 开始 · S 设置 · 1 / 2 选关', {
+    this.add.text(WIDTH / 2, 780, '← / → 选角色 · Enter 开始 · S 设置 · 1 / 2 选关 · 3 星光体验', {
       fontFamily: FONT, fontSize: '24px', color: '#604320',
     }).setOrigin(0.5).setResolution(TEXT_RESOLUTION);
   }
@@ -234,9 +242,9 @@ export class StartScene extends Phaser.Scene {
       .setDepth(100)
       .setVisible(false);
     const rows = [
-      { y: -85, action: () => this.changeAudio('music'), label: 'music' },
-      { y: 0, action: () => this.changeAudio('soundVolume', 0.1), label: 'soundVolume' },
-      { y: 85, action: () => this.changeAudio('musicVolume', 0.1), label: 'musicVolume' },
+      { y: -100, action: () => this.changeAudio('music'), label: 'music' },
+      { y: -30, action: () => this.changeAudio('soundVolume', 0.1), label: 'soundVolume' },
+      { y: 40, action: () => this.changeAudio('musicVolume', 0.1), label: 'musicVolume' },
     ] as const;
     for (const row of rows) {
       const label = this.add.text(0, row.y, '', {
@@ -254,9 +262,12 @@ export class StartScene extends Phaser.Scene {
         }
       }
     }
-    this.settingsModal.add(this.add.text(0, 145, '0.1 试玩版 · 问题反馈与版本', {
-      fontFamily: FONT, fontSize: '24px', color: '#2776c9', padding: { x: 18, y: 10 },
+    this.settingsModal.add(this.add.text(0, 94, '0.1 试玩版 · 问题反馈与版本', {
+      fontFamily: FONT, fontSize: '22px', color: '#2776c9', padding: { x: 18, y: 8 },
     }).setOrigin(0.5).setInteractive({ useHandCursor: true }).on('pointerup', openFeedback));
+    this.settingsModal.add(this.add.text(0, 141, '画面与特效 · 减少动态效果', {
+      fontFamily: FONT, fontSize: '22px', color: '#416b59', padding: { x: 18, y: 8 },
+    }).setOrigin(0.5).setInteractive({ useHandCursor: true }).on('pointerup', openEffectPanel));
     this.renderAudioLabels();
   }
 
@@ -293,6 +304,7 @@ export class StartScene extends Phaser.Scene {
     this.input.keyboard?.on('keydown-TWO', () => {
       if (loadProgress().unlocked.includes(levels[1].id)) this.startGame(levels[1].id);
     });
+    this.input.keyboard?.on('keydown-THREE', () => this.startAwakeningDemo());
     this.events.once(Phaser.Scenes.Events.SHUTDOWN, () => this.input.keyboard?.removeAllListeners());
   }
 
@@ -378,6 +390,12 @@ export class StartScene extends Phaser.Scene {
       this.navigating = false;
       this.editorEntry.setText('工坊加载失败 · 点击重试，或刷新页面');
     }
+  }
+  private startAwakeningDemo(): void {
+    if (this.settingsModal.visible || this.navigating) return;
+    this.navigating = true;
+    this.registry.set(REGISTRY.CHARACTER, this.selected);
+    this.scene.start(SCENE.GAME, { demo: true });
   }
 
   private nameStyle(color: string): Phaser.Types.GameObjects.Text.TextStyle {

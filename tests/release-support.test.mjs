@@ -14,6 +14,7 @@ const navigator = { userAgent: 'test-browser', clipboard: { writeText: async (va
 const load = runtime({ window, document: window.document, navigator });
 const { feedbackReport, mountReleaseSupport, openFeedback } = load('src/systems/ReleaseSupport.ts');
 const info = { version: '0.1.0-preview.1', revision: 'test-build', builtAt: '2026-10-19', channel: 'public-preview' };
+assert.equal(JSON.parse(feedbackReport(info, { levelId: 'awakening-demo' }, '')).game.level, 'awakening-demo');
 const context = { levelId: 'private-map-title', character: 'bubu', health: 2, customMap: true,
   uploadedAssets: 'secret-image', progress: 'private-save' };
 const report = feedbackReport(info, context, 'a'.repeat(2100));

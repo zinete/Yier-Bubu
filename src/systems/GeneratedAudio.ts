@@ -4,6 +4,7 @@ export function generatedAudio(): Record<string, string> {
     jump: [330, 440, 660], throw: [520, 390], hurt: [220, 140, 90],
     coin: [880, 1320], 'enemy-hit': [440, 220], win: [523, 659, 784, 1047],
     lose: [392, 330, 262, 196],
+    'shield-on': [440, 660, 880], 'shield-block': [1047, 784, 523],
     music: [262, 330, 392, 330, 294, 349, 440, 349, 330, 392, 523, 392, 294, 349, 392, 294],
   };
   const result: Record<string, string> = {};

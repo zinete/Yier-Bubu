@@ -2,7 +2,7 @@ import Phaser from 'phaser';
 import { SCENE } from '../config/constants';
 import { DRAFT_KEY, newMap, parseCustomMap, playablePlatforms, validateMapWidth, type CustomMap, type MapAsset, type SceneSettings, type SceneLayer } from '../systems/CustomMap';
 import { PLAYER } from '../config/constants';
-import type { EnemyData } from '../types/game';
+import type { AwakeningData, EnemyData, PlatformData } from '../types/game';
 import { mapAssets, DEFAULT_ASSETS, DEFAULT_OBJECT_SKINS } from '../systems/DefaultAssets';
 import { assetLayout, cachedAssetGeometry, ensureAssetGeometry } from '../systems/AssetGeometry';
 import { materialFor, platformSvg } from '../systems/PlatformMaterial';
@@ -49,6 +49,7 @@ export class EditorScene extends Phaser.Scene {
   private preview?: { x: number; y: number };
   private paintWidth = DEFAULT_PLATFORM_SIZE.width;
   private paintHeight = DEFAULT_PLATFORM_SIZE.height;
+  private awakeningBrush = false;
   private renderFrame = 0;
   private spaceHeld = false;
   private pan?: { x: number; y: number; left: number; top: number };
@@ -87,6 +88,7 @@ export class EditorScene extends Phaser.Scene {
     this.preview = undefined; this.spaceHeld = false; this.drag = undefined; this.pan = undefined; this.librarySnapshot = [];
     this.sceneEditBefore = undefined; this.backgroundFrame = 0;
     this.clipboard = undefined;
+    this.awakeningBrush = false;
     this.sidebarPanel = 'place'; this.inspectorMode = 'object';
     this.editorViewMode = 'height'; this.canvasFullscreen = false; this.normalViewport = undefined;
     this.viewportFrame = 0; this.viewportResizePending = false;
@@ -116,6 +118,7 @@ export class EditorScene extends Phaser.Scene {
       <div class="tool-dock"><div class="tools" role="group" aria-label="常用工具">
       <button data-tool="select" title="选择与拖动对象">↖ 选择</button><button data-tool="platform" title="连续放置可站立跳台">▰ 平台</button>
       <button data-tool="coin" title="连续放置可收集星星">✦ 星星</button><button data-tool="enemy" title="连续放置敌人">◉ 敌人</button></div>
+      <button data-awakening-brush title="成对放置花苞与限时平台，击中花苞后才能站立">✿ 星光平台（花苞唤醒）</button>
       <p class="tool-status" aria-live="polite"></p>
       <button class="brush-reset" data-action="reset-platform-size" title="仅恢复后续跳台为 160×32，不修改已放置对象" hidden>重置跳台尺寸</button></div>
       <div class="sidebar-tabs" role="tablist" aria-label="编辑分类">
@@ -167,6 +170,7 @@ export class EditorScene extends Phaser.Scene {
       <label>地图宽度<input data-meta="width" type="number" min="960" step="16"></label>
       <p class="hint">至少 960px，不设固定上限。</p>
       <label>时间限制（秒）<input data-meta="timeLimit" type="number" min="30" max="600"></label>
+      <label><input type="checkbox" data-meta="awakeningGoal"> 唤醒所有花苞后才能通关</label>
       <button data-action="meta">应用设置</button><details class="editor-details"><summary>新建地图</summary><p class="hint">替换当前地图，可撤销。建议先保存或导出。</p><button data-action="new" class="danger">新建空白地图</button></details>
       </section></div></aside><div class="workspace"><svg xmlns="http://www.w3.org/2000/svg" aria-label="地图编辑画布，选择对象后可复制、粘贴和删除" role="img" tabindex="0"></svg></div>
       <aside class="property-sidebar" aria-label="属性面板">
@@ -196,13 +200,17 @@ export class EditorScene extends Phaser.Scene {
         catch (error) { this.message(error instanceof Error ? error.message : '添加图层失败'); }
       }
       else if (button.dataset.asset) {
+        this.awakeningBrush = false;
         this.showInspector('object');
         this.assetId = button.dataset.asset;
         this.materialAssetId = this.assetId;
         this.tool = ({ 'builtin-moss-platform': 'platform', 'builtin-gold-star': 'coin', 'builtin-leaf-slime': 'enemy', 'builtin-lantern-marker': 'checkpoint' } as Record<string, Tool>)[this.assetId] ?? 'decoration';
         this.render();
       }
-      else if (button.dataset.tool) { this.showInspector('object'); this.tool = button.dataset.tool as Tool; this.assetId = undefined; this.render(); }
+      else if (button.hasAttribute('data-awakening-brush')) {
+        this.showInspector('object'); this.tool = 'platform'; this.awakeningBrush = true; this.assetId = undefined; this.resetPlatformBrush(); this.render();
+      }
+      else if (button.dataset.tool) { this.showInspector('object'); this.tool = button.dataset.tool as Tool; this.awakeningBrush = false; this.assetId = undefined; this.render(); }
       else {
         if (button.dataset.layerTarget) this.selectedLayerId = button.dataset.layerTarget;
         this.action(button.dataset.action ?? '');
@@ -527,6 +535,7 @@ export class EditorScene extends Phaser.Scene {
         else if (kind === 'coin') this.map.level.coins.splice(index, 1);
         else if (kind === 'decoration') this.map.decorations?.splice(index, 1);
         else this.map.level.enemies.splice(index, 1);
+        if (this.map.level.awakeningGoal && !this.map.level.platforms.some((p) => p.awakening)) this.map.level.awakeningGoal = false;
         this.setSelection([]);
         this.render(); this.message('选中对象已删除；Ctrl+Z 可恢复。'); return;
       } else if (action === 'meta') {
@@ -737,7 +746,7 @@ export class EditorScene extends Phaser.Scene {
   private noteFormInput(input: HTMLInputElement): void {
     const data = input.dataset;
     const group: FormGroup | undefined = data.meta ? 'meta' : data.material && data.material !== 'asset' ? 'material'
-      : ['prop', 'kind', 'appearance', 'layer', 'solid', 'remote'].some((key) => Object.hasOwn(data, key)) ? 'properties' : undefined;
+      : ['prop', 'kind', 'appearance', 'layer', 'solid', 'remote', 'awakening', 'awakeningField'].some((key) => Object.hasOwn(data, key)) ? 'properties' : undefined;
     if (group) { this.pendingForms.add(group); this.renderDraftStatus(); }
   }
   private pendingMessage(): void {
@@ -754,6 +763,7 @@ export class EditorScene extends Phaser.Scene {
       candidate.title = field('[data-meta="title"]').trim();
       candidate.level.width = validateMapWidth(Number(field('[data-meta="width"]')));
       candidate.level.timeLimit = Number(field('[data-meta="timeLimit"]'));
+      candidate.level.awakeningGoal = this.root.querySelector<HTMLInputElement>('[data-meta="awakeningGoal"]')!.checked;
     }
     if (groups.includes('material')) {
       const id = this.materialAssetId;
@@ -779,6 +789,19 @@ export class EditorScene extends Phaser.Scene {
         value[input.dataset.prop!] = number;
       });
       const kind = this.root.querySelector<HTMLSelectElement>('[data-kind]'); if (kind) value.kind = kind.value;
+      const awakening = this.root.querySelector<HTMLInputElement>('[data-awakening]');
+      if (awakening) {
+        if (awakening.checked) {
+          const settings = value.awakening ? { ...value.awakening as AwakeningData } : this.defaultAwakening();
+          this.root.querySelectorAll<HTMLInputElement>('[data-awakening-field]').forEach((input) => {
+            if (!input.value.trim() || !Number.isFinite(Number(input.value))) throw new Error('星光参数需为有效数字');
+            settings[input.dataset.awakeningField as keyof AwakeningData] = Number(input.value);
+          });
+          settings.budOffsetX = Math.round(settings.budOffsetX / EDITOR_GRID) * EDITOR_GRID;
+          settings.budOffsetY = Math.round(settings.budOffsetY / EDITOR_GRID) * EDITOR_GRID;
+          value.awakening = settings;
+        } else delete value.awakening;
+      }
       const appearance = this.root.querySelector<HTMLSelectElement>('[data-appearance]');
       if (appearance) { if (appearance.value) value.assetId = appearance.value; else delete value.assetId; }
       const layer = this.root.querySelector<HTMLSelectElement>('[data-layer]'); if (layer) value.layer = layer.value;
@@ -959,6 +982,7 @@ export class EditorScene extends Phaser.Scene {
         : kind === 'enemy' ? candidate.level.enemies : candidate.decorations;
       editable.filter((ref) => ref.kind === kind).sort((a, b) => b.index - a.index).forEach((ref) => array?.splice(ref.index, 1));
     }
+    if (candidate.level.awakeningGoal && !candidate.level.platforms.some((p) => p.awakening)) candidate.level.awakeningGoal = false;
     parseCustomMap(candidate, false);
     this.remember(); this.map = candidate; this.setSelection(refs.filter((ref) => !editable.includes(ref)));
     this.render(); this.message(`已删除 ${editable.length} 个对象，保留 ${refs.length - editable.length} 个唯一标记；Ctrl+Z 一次恢复。`);
@@ -1019,7 +1043,14 @@ export class EditorScene extends Phaser.Scene {
     const rectangle = kind === 'platform' || kind === 'flag' || kind === 'decoration';
     const width = kind === 'platform' ? this.paintWidth : kind === 'flag' ? this.map.level.flag.width : (asset?.width ?? 16) * scale;
     const height = kind === 'platform' ? this.paintHeight : kind === 'flag' ? this.map.level.flag.height : (asset?.height ?? 16) * scale;
-    return snapObjectToGrid(kind, { ...p, ...(rectangle ? { width, height } : {}) }, this.map.level.width);
+    return snapObjectToGrid(kind, { ...p, ...(rectangle ? { width, height } : {}),
+      ...(kind === 'platform' && this.awakeningBrush ? { awakening: this.defaultAwakening() } : {}) }, this.map.level.width);
+  }
+  private defaultAwakening(): AwakeningData { return { budOffsetX: 16, budOffsetY: -32, durationMs: 8000 }; }
+  private awakeningMarkup(p: { x: number; y: number; width?: number; height?: number; awakening?: AwakeningData }, interactive = false): string {
+    if (!p.awakening) return '';
+    const x = p.x + p.awakening.budOffsetX, y = p.y + p.awakening.budOffsetY;
+    return `<g data-awakening-preview${interactive ? '' : ' pointer-events="none"'}><path d="M${x} ${y + 16}L${p.x + (p.width ?? 160) / 2} ${p.y}" stroke="#c99539" stroke-dasharray="4 4"/><ellipse cx="${x}" cy="${y + 10}" rx="16" ry="8" fill="#70a576"/><ellipse cx="${x}" cy="${y - 2}" rx="10" ry="18" fill="#ffe9a8" stroke="#bc873b" stroke-width="2"/><text x="${x + 23}" y="${y}" fill="#73512b" font-size="13">击中唤醒 · ${p.awakening.durationMs / 1000}秒</text></g>`;
   }
   private scheduleCanvas(): void {
     if (this.renderFrame) return;
@@ -1046,6 +1077,7 @@ export class EditorScene extends Phaser.Scene {
       return;
     }
     const value = this.object(); if (!this.drag || !this.selected || !value) return;
+    if (value.awakening && (this.drag.resize || this.drag.resized)) { this.renderCanvas(); return; }
     const element = this.svg().querySelector(`[data-object="${this.selected.kind}"][data-index="${this.selected.index}"]`);
     const x = Number(value.x), y = Number(value.y);
     if (this.drag.resize || this.drag.resized) {
@@ -1129,7 +1161,11 @@ export class EditorScene extends Phaser.Scene {
       }
       this.remember();
       const placed = this.placement(p); const { x, y } = placed;
-      if (this.tool === 'platform') { const id = this.nextObjectId(); l.platforms.push({ objectId: id, id, x, y, width: placed.width!, height: placed.height!, kind: 'platform', assetId: this.assetId }); this.setSelection([{ kind: 'platform', index: l.platforms.length - 1 }]); }
+      if (this.tool === 'platform') {
+        if (this.awakeningBrush && l.platforms.filter((p) => p.awakening).length >= 20) { this.message('星光平台最多 20 个'); return; }
+        const id = this.nextObjectId(); l.platforms.push({ objectId: id, id, x, y, width: placed.width!, height: placed.height!, kind: 'platform', assetId: this.assetId,
+          ...(placed.awakening ? { awakening: placed.awakening } : {}) }); this.setSelection([{ kind: 'platform', index: l.platforms.length - 1 }]);
+      }
       else if (this.tool === 'coin') { l.coins.push({ objectId: this.nextObjectId(), x, y, assetId: this.assetId }); this.setSelection([{ kind: 'coin', index: l.coins.length - 1 }]); }
       else if (this.tool === 'enemy') { l.enemies.push({ objectId: this.nextObjectId(), x, y, min: Math.max(0, x - 80), max: Math.min(l.width, x + 80), speed: 70, assetId: this.assetId }); this.setSelection([{ kind: 'enemy', index: l.enemies.length - 1 }]); }
       else { Object.assign(l[this.tool], { ...placed, assetId: this.assetId }); this.setSelection([{ kind: this.tool, index: 0 }]); }
@@ -1193,7 +1229,7 @@ export class EditorScene extends Phaser.Scene {
     cancelAnimationFrame(this.renderFrame); this.renderFrame = 0;
     const changed = this.drag.before !== this.snapshot();
     let failure: string | undefined;
-    if (!cancel && changed && this.drag.batch) {
+    if (!cancel && changed) {
       try { parseCustomMap(this.map, false); }
       catch (error) { cancel = true; failure = error instanceof Error ? error.message : '选区移动失败，已还原'; }
     }
@@ -1244,7 +1280,7 @@ export class EditorScene extends Phaser.Scene {
       const asset = library.find((item) => item.id === p.assetId); if (!asset) return '';
       return `<g data-object="decoration" data-index="${i}"><image href="${asset.data}" x="${p.x}" y="${p.y}" width="${p.width}" height="${p.height}" preserveAspectRatio="none"/><rect data-selection-outline x="${p.x}" y="${p.y}" width="${p.width}" height="${p.height}" fill="transparent" stroke="${selected('decoration', i)}" stroke-width="1"/></g>`;
     }).join('');
-    const skin = (kind: string, index: number, value: { assetId?: string; x: number; y: number }, x: number, y: number, width: number, height: number, solid = kind === 'platform'): string => {
+    const skin = (kind: string, index: number, value: { assetId?: string; x: number; y: number; awakening?: AwakeningData }, x: number, y: number, width: number, height: number, solid = kind === 'platform'): string => {
       const asset = library.find((item) => item.id === (value.assetId ?? DEFAULT_OBJECT_SKINS[kind]));
       if (!asset) return '';
       const geometry = cachedAssetGeometry(asset.data);
@@ -1254,7 +1290,7 @@ export class EditorScene extends Phaser.Scene {
         : `<image href="${asset.data}" x="${x}" y="${y}" width="${width}" height="${height}" preserveAspectRatio="none"/>`;
       const isSelected = selectionKeys.has(`${kind}:${index}`);
       const hit = objectBounds(kind as Selection['kind'], { ...value, width, height });
-      return `<g data-object="${kind}" data-index="${index}"><g pointer-events="none">${picture}</g>${solid ? this.platformOutline(x, y, width, height, isSelected) : this.objectOutline(hit.x, hit.y, hit.width, hit.height, isSelected)}</g>`;
+      return `<g data-object="${kind}" data-index="${index}"><g pointer-events="none" opacity="${value.awakening ? '0.45' : '1'}">${picture}</g>${solid ? this.platformOutline(x, y, width, height, isSelected) : this.objectOutline(hit.x, hit.y, hit.width, hit.height, isSelected)}${this.awakeningMarkup({ ...value, width, height }, true)}</g>`;
     };
     html += decorations('back');
     l.platforms.forEach((p, i) => { html += skin('platform', i, p, p.x, p.y, Math.max(1, p.width), Math.max(1, p.height)); });
@@ -1299,7 +1335,7 @@ export class EditorScene extends Phaser.Scene {
       : `<image href="${asset.data}" x="${x}" y="${y}" width="${width}" height="${height}"/>`;
     const g = document.createElementNS('http://www.w3.org/2000/svg', 'g');
     g.dataset.placementPreview = ''; g.setAttribute('pointer-events', 'none'); g.setAttribute('opacity', '0.55');
-    g.innerHTML = `${picture}<rect x="${hit.x}" y="${hit.y}" width="${hit.width}" height="${hit.height}" fill="none" stroke="#307c63" stroke-dasharray="5 4"/>`;
+    g.innerHTML = `${picture}${this.awakeningMarkup(placed)}<rect x="${hit.x}" y="${hit.y}" width="${hit.width}" height="${hit.height}" fill="none" stroke="#307c63" stroke-dasharray="5 4"/>`;
     svg.append(g);
     if (this.tool === 'platform') {
       const maxJump = Math.floor(PLAYER.JUMP_VELOCITY ** 2 / (2 * PLAYER.NORMAL_GRAVITY));
@@ -1348,15 +1384,19 @@ export class EditorScene extends Phaser.Scene {
     const toolNames: Record<Tool, string> = { select: '选择 / 拖动', platform: '跳跃平台（可站立）', coin: '星星（可收集）', enemy: '敌人', spawn: '出生点', checkpoint: '检查点', flag: '终点', decoration: '装饰（无碰撞）' };
     const toolStatus = this.root.querySelector<HTMLElement>('.tool-status')!;
     toolStatus.textContent = `${toolNames[this.tool]}${this.tool === 'platform' ? ` · ${this.paintWidth}×${this.paintHeight}` : ''}`;
+    if (this.tool === 'platform' && this.awakeningBrush) toolStatus.textContent = `星光平台 · 击中花苞唤醒 · ${this.paintWidth}×${this.paintHeight}`;
     toolStatus.title = toolStatus.textContent;
     this.root.querySelector<HTMLSelectElement>('[data-placement-kind]')!.value = this.tool;
     this.renderSceneControls();
     this.root.querySelectorAll<HTMLButtonElement>('[data-tool]').forEach((button) => button.setAttribute('aria-pressed', String(button.dataset.tool === this.tool)));
+    this.root.querySelector('[data-awakening-brush]')?.setAttribute('aria-pressed', String(this.tool === 'platform' && this.awakeningBrush));
+    if (this.awakeningBrush) this.root.querySelector('[data-tool="platform"]')?.setAttribute('aria-pressed', 'false');
     this.root.querySelector<HTMLButtonElement>('[data-action="undo"]')!.disabled = !this.undo.length;
     this.root.querySelector<HTMLButtonElement>('[data-action="redo"]')!.disabled = !this.redo.length;
     this.root.querySelector<HTMLInputElement>('[data-meta="title"]')!.value = this.map.title;
     this.root.querySelector<HTMLInputElement>('[data-meta="width"]')!.value = String(this.map.level.width);
     this.root.querySelector<HTMLInputElement>('[data-meta="timeLimit"]')!.value = String(this.map.level.timeLimit);
+    this.root.querySelector<HTMLInputElement>('[data-meta="awakeningGoal"]')!.checked = this.map.level.awakeningGoal === true;
     const inspector = this.root.querySelector<HTMLDivElement>('.inspector')!;
     inspector.replaceChildren(); const value = this.object();
     const refs = this.activeSelections();
@@ -1399,6 +1439,21 @@ export class EditorScene extends Phaser.Scene {
       const select = document.createElement('select'); select.dataset.kind = '';
       select.innerHTML = '<option value="platform">浮空平台</option><option value="ground">地面</option>';
       select.value = String(value.kind); inspector.append(select);
+      const label = document.createElement('label'); label.textContent = '花苞唤醒的限时平台';
+      const toggle = document.createElement('input'); toggle.type = 'checkbox'; toggle.dataset.awakening = ''; toggle.checked = !!value.awakening;
+      toggle.disabled = value.kind === 'ground';
+      label.append(toggle); inspector.append(label);
+      const advanced = document.createElement('details'); advanced.className = 'editor-details'; advanced.open = !!value.awakening;
+      const advancedTitle = document.createElement('summary'); advancedTitle.textContent = '星光机关参数'; advanced.append(advancedTitle);
+      toggle.addEventListener('change', () => { advanced.open = toggle.checked; });
+      const settings = (value as unknown as PlatformData).awakening ?? this.defaultAwakening();
+      for (const [key, title] of [['durationMs', '持续时间（毫秒，3000～30000）'], ['budOffsetX', '花苞相对平台 X'], ['budOffsetY', '花苞相对平台 Y']] as const) {
+        const label = document.createElement('label'); label.textContent = title;
+        const input = document.createElement('input'); input.type = 'number'; input.dataset.awakeningField = key;
+        input.value = String(settings[key]); input.step = key === 'durationMs' ? '1000' : '16';
+        label.append(input); advanced.append(label);
+      }
+      const hint = document.createElement('p'); hint.className = 'hint'; hint.textContent = '花苞随平台一起拖动和复制；未点亮时没有碰撞，最后 1.5 秒显示休眠警告。地面不能启用。'; advanced.append(hint); inspector.append(advanced);
     }
     if (this.selected?.kind === 'decoration') {
       const collisionLabel = document.createElement('label'); collisionLabel.textContent = '作为可站立平台';

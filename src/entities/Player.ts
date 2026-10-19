@@ -49,12 +49,13 @@ export class Player extends Phaser.Physics.Arcade.Sprite {
     this.playStateAnimation(time);
   }
   hurt(time: number, sourceX: number): boolean {
-    if (time < this.hurtUntil) return false;
+    if (this.isInvulnerable(time)) return false;
     this.hurtUntil = time + PLAYER.HURT_COOLDOWN;
     this.setVelocity((this.x < sourceX ? -1 : 1) * 280, -320);
     this.playAnimation('hurt');
     return true;
   }
+  isInvulnerable(time: number): boolean { return time < this.hurtUntil; }
   stomp(): void {
     this.setVelocityY(-390);
   }

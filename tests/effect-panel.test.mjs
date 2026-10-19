@@ -1,0 +1,35 @@
+import assert from 'node:assert/strict';
+import { log } from 'node:console';
+import { JSDOM } from 'jsdom';
+import { runtime } from './helpers/runtime.mjs';
+const dom = new JSDOM('<!DOCTYPE html><body><button id="source">settings</button></body>');
+const { window } = dom;
+window.HTMLDialogElement.prototype.showModal = function () { this.open = true; };
+window.HTMLDialogElement.prototype.close = function () { this.open = false; this.dispatchEvent(new window.Event('close')); };
+window.matchMedia = (query) => ({ matches: query === '(prefers-reduced-motion: reduce)' });
+const values = new Map();
+let blocked = false;
+const load = runtime({ window, document: window.document, localStorage: {
+  getItem: (key) => values.get(key) ?? null, setItem(key, value) { if (blocked) throw new Error('blocked'); values.set(key, value); },
+} });
+const prefs = load('src/systems/EffectPreferences.ts');
+assert.equal(prefs.getEffectPreferences().reducedMotion, true, '默认遵循系统减少动态偏好');
+const { mountEffectPanel, openEffectPanel } = load('src/systems/EffectPanel.ts');
+let opened = 0, closed = 0;
+const dispose = mountEffectPanel(() => opened++, () => closed++);
+window.document.querySelector('#source').focus(); openEffectPanel(); openEffectPanel();
+assert.equal(opened, 1);
+const quality = window.document.querySelector('[data-effect-quality]'); quality.value = 'low';
+quality.dispatchEvent(new window.Event('change', { bubbles: true }));
+assert.equal(prefs.getEffectPreferences().quality, 'low');
+blocked = true;
+const reduced = window.document.querySelector('[data-reduced-motion]'); reduced.checked = false;
+reduced.dispatchEvent(new window.Event('change', { bubbles: true }));
+assert.equal(prefs.getEffectPreferences().reducedMotion, false, '存储禁用时仍即时应用本次设置');
+window.document.querySelector('[data-effect-close]').click(); assert.equal(closed, 1);
+assert.equal(window.document.activeElement.id, 'source');
+openEffectPanel(); assert.equal(reduced.checked, false);
+dispose(); assert.equal(closed, 2); assert.equal(window.document.querySelector('dialog'), null);
+openEffectPanel(); assert.equal(opened, 2);
+window.close();
+log('effect settings DOM: system preference, live updates, storage fallback and modal cleanup passed');

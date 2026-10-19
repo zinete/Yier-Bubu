@@ -6,7 +6,7 @@ import { GameScene } from '../scenes/GameScene';
 import { UIScene } from '../scenes/UIScene';
 import { ResultScene } from '../scenes/ResultScene';
 export const gameConfig: Phaser.Types.Core.GameConfig = {
-  type: Phaser.AUTO,
+  type: new URLSearchParams(window.location.search).get('renderer') === 'canvas' ? Phaser.CANVAS : Phaser.AUTO,
   parent: 'app',
   backgroundColor: '#9ed8ff',
   input: { activePointers: 4 },

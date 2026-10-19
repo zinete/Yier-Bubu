@@ -14,6 +14,7 @@ export interface UILayoutSpec {
   joystick: ControlLayout & { hitSize: number };
   jump: ControlLayout;
   attack: ControlLayout;
+  shield: ControlLayout;
 }
 
 const VISUAL_MARGIN = 14;
@@ -43,6 +44,7 @@ export const computeUILayout = (width: number, height: number): UILayoutSpec => 
   const jumpY = height - margin - jumpSize / 2;
   const attackX = jumpX - jumpSize / 2 - gap - attackSize / 2;
   const attackY = height - margin - attackSize / 2 - Math.round(attackSize * 0.18);
+  const shieldSize = clamp(uiScale * 66, 56, 120);
 
   return {
     margin,
@@ -62,6 +64,7 @@ export const computeUILayout = (width: number, height: number): UILayoutSpec => 
     },
     jump: { x: jumpX, y: jumpY, size: jumpSize },
     attack: { x: attackX, y: attackY, size: attackSize },
+    shield: { x: attackX, y: attackY - attackSize / 2 - gap - shieldSize / 2, size: shieldSize },
   };
 };
 

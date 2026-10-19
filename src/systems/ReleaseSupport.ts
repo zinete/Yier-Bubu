@@ -9,7 +9,7 @@ export function feedbackReport(info: BuildInfo, context: PlayerContext, descript
     build: info, description: description.slice(0, 2000),
     device: { browser: navigator.userAgent.slice(0, 200), viewport: [window.innerWidth, window.innerHeight], pixelRatio: window.devicePixelRatio },
     game: {
-      level: context.customMap ? 'custom' : ['1-1', '1-2'].includes(context.levelId ?? '') ? context.levelId : 'menu',
+      level: context.customMap ? 'custom' : ['1-1', '1-2', 'awakening-demo'].includes(context.levelId ?? '') ? context.levelId : 'menu',
       character: context.character === 'bubu' ? 'bubu' : 'yier',
       health: Number.isFinite(context.health) ? context.health : undefined,
       seconds: Number.isFinite(context.seconds) ? context.seconds : undefined,

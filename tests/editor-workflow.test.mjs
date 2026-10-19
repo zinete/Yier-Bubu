@@ -594,3 +594,57 @@ Object.defineProperty(fallbackResize.document.querySelector('.workspace'), 'clie
 fallbackResize.window.dispatchEvent(new fallbackResize.window.Event('resize')); fallbackResize.flushFrames();
 assert.ok(Math.abs(fallbackResize.scene.editorZoom * 540 - 760) < 1e-8, '无 ResizeObserver 时仍有窗口 resize 回退'); fallbackResize.close();
 log('Immersive viewport DOM tests passed (height fill, fullscreen, game ratio, resize lifecycle)');
+
+// Starflower/temporary platform remains one editable object throughout CRUD.
+const flowers = setup(); const flowerScene = flowers.scene;
+flowers.document.querySelector('[data-awakening-brush]').click();
+assert.equal(flowerScene.tool, 'platform'); assert.equal(flowerScene.awakeningBrush, true);
+const putFlower = (x, y) => {
+  const svg = flowers.document.querySelector('svg'), rect = svg.getBoundingClientRect();
+  flowerScene.pointerDown({ button: 0, pointerId: 1, target: svg,
+    clientX: rect.left + x * flowerScene.editorZoom, clientY: rect.top + y * flowerScene.editorZoom });
+};
+putFlower(480, 320); putFlower(720, 272);
+assert.equal(flowerScene.map.level.platforms.filter((p) => p.awakening).length, 2, '支持连续放置');
+assert.equal(flowers.document.querySelectorAll('[data-awakening-preview]').length, 2);
+const selectedFlower = JSON.stringify(flowerScene.object());
+flowers.input('[data-awakening-field="durationMs"]', '1');
+const flowerHistory = flowerScene.undo.length;
+flowers.click('properties');
+assert.equal(JSON.stringify(flowerScene.object()), selectedFlower); assert.equal(flowerScene.undo.length, flowerHistory);
+assert.match(flowers.document.querySelector('footer').textContent, /操作失败|持续时间/, '跨 VM 的解析异常仍阻止提交，详细范围由纯解析测试覆盖');
+flowers.input('[data-awakening-field="durationMs"]', '6000'); flowers.click('properties');
+assert.equal(flowerScene.object().awakening.durationMs, 6000);
+flowers.click('copy'); flowers.click('paste');
+assert.equal(flowerScene.map.level.platforms.filter((p) => p.awakening).length, 3);
+assert.equal(flowerScene.object().awakening.durationMs, 6000);
+assert.notEqual(flowerScene.object().objectId, JSON.parse(selectedFlower).objectId);
+flowers.click('undo'); assert.equal(flowerScene.map.level.platforms.filter((p) => p.awakening).length, 2);
+flowers.click('redo'); assert.equal(flowerScene.map.level.platforms.filter((p) => p.awakening).length, 3);
+const goalLock = flowers.document.querySelector('[data-meta="awakeningGoal"]'); goalLock.checked = true;
+goalLock.dispatchEvent(new flowers.window.Event('input', { bubbles: true })); flowers.click('meta');
+assert.equal(flowerScene.map.level.awakeningGoal, true);
+const flowerSnapshot = JSON.stringify(flowerScene.map);
+flowers.click('save'); flowers.click('export');
+const flowerExport = maps.parseCustomMap(JSON.parse(await flowers.downloaded.text()));
+assert.equal(flowerExport.level.awakeningGoal, true); assert.equal(flowerExport.level.platforms.filter((p) => p.awakening).length, 3);
+flowerScene.setSelection(flowerScene.map.level.platforms.flatMap((p, index) => p.awakening ? [{ kind: 'platform', index }] : []));
+flowerScene.render(); flowers.click('delete');
+assert.equal(flowerScene.map.level.platforms.filter((p) => p.awakening).length, 0);
+assert.equal(flowerScene.map.level.awakeningGoal, false, '删除最后的花苞同步解除无效终点锁');
+flowers.click('undo'); assert.equal(JSON.stringify(flowerScene.map), flowerSnapshot);
+flowerScene.setSelection([{ kind: 'platform', index: 1 }]); flowerScene.render();
+const initialFlower = { ...flowerScene.object() }, flowerSvg = flowers.document.querySelector('svg'), flowerBox = flowerSvg.getBoundingClientRect();
+flowerScene.tool = 'select';
+const flowerGroup = flowerSvg.querySelector('[data-object="platform"][data-index="1"] [data-awakening-preview]');
+assert.equal(flowerGroup.hasAttribute('pointer-events'), false, '花苞本身也能选中和拖动配对对象');
+const grabX = initialFlower.x + initialFlower.awakening.budOffsetX, grabY = initialFlower.y + initialFlower.awakening.budOffsetY;
+flowerScene.pointerDown({ button: 0, pointerId: 1, target: flowerGroup.querySelector('ellipse'),
+  clientX: flowerBox.left + grabX * flowerScene.editorZoom, clientY: flowerBox.top + grabY * flowerScene.editorZoom });
+flowerScene.pointerMove({ clientX: flowerBox.left + (grabX + 32) * flowerScene.editorZoom, clientY: flowerBox.top + (grabY + 16) * flowerScene.editorZoom });
+flowerScene.endDrag();
+assert.equal(flowerScene.object().x, initialFlower.x + 32); assert.equal(flowerScene.object().y, initialFlower.y + 16);
+assert.equal(flowerScene.object().awakening.budOffsetX, initialFlower.awakening.budOffsetX, '整体拖动不改变相对关联');
+flowers.click('undo'); assert.equal(JSON.stringify(flowerScene.map), flowerSnapshot);
+flowers.close();
+log('Awakening editor DOM tests passed (continuous placement, fields, validation, copy, history, drag, save/export and goal lock)');

@@ -5,6 +5,7 @@ import type { AudioSettings } from '../systems/AudioManager';
 import type { Control } from '../systems/InputManager';
 import type { HudState } from '../types/game';
 import { openFeedback } from '../systems/ReleaseSupport';
+import { openEffectPanel } from '../systems/EffectPanel';
 
 const TEXT_RESOLUTION = Math.min(window.devicePixelRatio || 1, 2);
 const MAX_HEALTH = 3;
@@ -13,6 +14,7 @@ interface ActionControl {
   button: Phaser.GameObjects.Image;
   control: Control;
   size: number;
+  label?: Phaser.GameObjects.Text;
 }
 
 export class UIScene extends Phaser.Scene {
@@ -40,6 +42,7 @@ export class UIScene extends Phaser.Scene {
   private tutorialHint!: Phaser.GameObjects.Text;
   private pauseText!: Phaser.GameObjects.Text;
   private skillText!: Phaser.GameObjects.Text;
+  private shieldText!: Phaser.GameObjects.Text;
   private pauseMenu!: Phaser.GameObjects.Container;
   private journeyText!: Phaser.GameObjects.Text;
   private skillBar!: Phaser.GameObjects.Rectangle;
@@ -69,6 +72,17 @@ export class UIScene extends Phaser.Scene {
       padding: { x: 18, y: 10 },
     }).setOrigin(0.5).setDepth(10);
     this.skillBar = this.add.rectangle(0, 0, 150, 4, 0xffdf87).setOrigin(0, 0.5).setDepth(11);
+    this.shieldText = this.add.text(0, 0, '', {
+      fontSize: '13px', color: '#204e65', backgroundColor: '#e1f6ff', padding: { x: 10, y: 6 },
+    }).setDepth(5);
+    if (!this.textures.exists('ui-button-shield')) {
+      const art = this.make.graphics({ x: 0, y: 0 });
+      art.fillStyle(0x214e65, 0.25).fillCircle(48, 50, 44);
+      art.fillStyle(0xd7f7ff, 0.95).fillCircle(48, 46, 43);
+      art.lineStyle(3, 0x62b4d1).strokeCircle(48, 46, 41);
+      art.lineStyle(2, 0xffffff).strokeCircle(48, 46, 36);
+      art.generateTexture('ui-button-shield', 96, 96); art.destroy();
+    }
     this.journeyText = this.add.text(0, 0, '', {
       fontSize: '13px', color: '#416b59', backgroundColor: '#fff7e5', padding: { x: 10, y: 6 },
     }).setDepth(5);
@@ -90,9 +104,12 @@ export class UIScene extends Phaser.Scene {
         .on('pointerup', () => this.game.events.emit('game-action', action));
       this.pauseMenu.add(button);
     }
-    this.pauseMenu.add(this.add.text(0, 54, '试玩反馈与版本', {
+    this.pauseMenu.add(this.add.text(-80, 54, '反馈与版本', {
       fontSize: '16px', color: '#fff4cf', backgroundColor: '#416b59', padding: { x: 18, y: 14 },
     }).setOrigin(0.5).setInteractive({ useHandCursor: true }).on('pointerup', openFeedback));
+    this.pauseMenu.add(this.add.text(80, 54, '画面与特效', {
+      fontSize: '16px', color: '#fff4cf', backgroundColor: '#416b59', padding: { x: 18, y: 14 },
+    }).setOrigin(0.5).setInteractive({ useHandCursor: true }).on('pointerup', openEffectPanel));
     this.hudPanel = this.add.image(0, 0, 'forest-hud').setOrigin(0, 0).setScrollFactor(0);
     this.portraitFrame = this.add.image(0, 0, 'ui-portrait-frame').setScrollFactor(0).setDepth(2);
     this.portrait = this.add.sprite(0, 0, 'characters', 0).setScrollFactor(0).setDepth(3);
@@ -144,7 +161,7 @@ export class UIScene extends Phaser.Scene {
   }
 
   private hudSignature(state: HudState): string {
-    return `${state.health}|${state.score}|${state.coins}|${state.totalCoins}|${state.seconds}|${state.character}|${state.paused}|${state.skillReady}|${state.skillCharge.toFixed(2)}|${Math.round(state.progress * 100)}|${state.checkpointReached}|${state.tutorialStep}`;
+    return `${state.health}|${state.score}|${state.coins}|${state.totalCoins}|${state.seconds}|${state.character}|${state.paused}|${state.skillReady}|${state.skillCharge.toFixed(2)}|${Math.round(state.progress * 100)}|${state.checkpointReached}|${state.tutorialStep}|${state.awakening?.lit}|${state.awakening?.total}|${state.awakening?.goalLocked}|${state.shield?.active}|${Math.ceil((state.shield?.activeMs ?? 0) / 1000)}|${Math.ceil((state.shield?.cooldownMs ?? 0) / 1000)}`;
   }
 
   private hudText(color = '#1d2b3a'): Phaser.GameObjects.Text {
@@ -199,9 +216,16 @@ export class UIScene extends Phaser.Scene {
       this.tutorialHint.setText(hints[state.tutorialStep]);
     }
     this.skillBar?.setScale(state.skillCharge, 1);
-    this.journeyText?.setText(`${state.levelId} · 路程 ${Math.round(state.progress * 100)}%${state.checkpointReached ? ' · 检查点 ✓' : ''}`);
+    this.journeyText?.setText(`${state.levelId === 'awakening-demo' ? '星光唤醒' : state.levelId} · 路程 ${Math.round(state.progress * 100)}%${state.checkpointReached ? ' · 检查点 ✓' : ''}${state.awakening ? ` · 星花 ${state.awakening.lit}/${state.awakening.total}` : ''}`);
     this.skillText?.setText(state.skillReady ? '✦ 星光弹 · 就绪' : '✦ 星光弹 · 聚光中')
       .setAlpha(state.skillReady ? 1 : 0.65);
+    const shield = state.shield;
+    const shieldStatus = state.tutorialStep < 3 ? '完成引导后解锁' : shield?.active ? `守护中 ${Math.ceil(shield.activeMs / 1000)}s · 可抵挡一次`
+      : shield && !shield.ready ? `冷却 ${Math.ceil(shield.cooldownMs / 1000)}s` : '就绪 · 抵挡一次攻击';
+    this.shieldText?.setText(`${isTouchPrimaryDevice() ? '泡泡守护' : 'K · 泡泡守护'} · ${shieldStatus}`);
+    const shieldControl = this.actionControls.find((action) => action.control === 'shield');
+    shieldControl?.label?.setText(state.tutorialStep < 3 ? '护盾\n引导后' : shield?.active ? `护盾\n${Math.ceil(shield.activeMs / 1000)}s`
+      : shield && !shield.ready ? `冷却\n${Math.ceil(shield.cooldownMs / 1000)}s` : '护盾');
   }
 
   private renderAudio(_parent: Phaser.Data.DataManager, settings?: AudioSettings): void {
@@ -227,6 +251,11 @@ export class UIScene extends Phaser.Scene {
     this.input.on('pointerupoutside', this.onPointerUp, this);
     this.actionControls.push(this.actionButton('ui-button-throw', 'attack', 74));
     this.actionControls.push(this.actionButton('ui-button-jump', 'jump', 88));
+    const shield = this.actionButton('ui-button-shield', 'shield', 66);
+    shield.label = this.add.text(0, 0, '护盾', {
+      fontSize: '15px', fontStyle: 'bold', color: '#204e65', align: 'center',
+    }).setOrigin(0.5).setScrollFactor(0);
+    this.actionControls.push(shield);
   }
 
   private actionButton(texture: string, control: Control, size: number): ActionControl {
@@ -262,6 +291,7 @@ export class UIScene extends Phaser.Scene {
     this.pauseText.setPosition(width / 2, Math.max(65, Math.min(height / 2 - 20, height - 218)));
     this.pauseMenu.setPosition(width / 2, Math.min(height / 2 + 82, height - 100));
     this.journeyText.setPosition(margin, margin + layout.hud.height + 12);
+    this.shieldText?.setPosition(margin, margin + layout.hud.height + 44);
     this.skillBar.setPosition(width / 2 - 75, height - 42);
     this.skillText.setPosition(width / 2, height - 65).setFontSize(width < 760 ? '13px' : '16px');
     const scale = layout.hud.scale;
@@ -320,8 +350,9 @@ export class UIScene extends Phaser.Scene {
       this.joystickPointerId = undefined;
     }
     for (const action of this.actionControls) {
-      const spec = action.control === 'jump' ? layout.jump : layout.attack;
+      const spec = action.control === 'jump' ? layout.jump : action.control === 'shield' ? layout.shield : layout.attack;
       action.button.setPosition(spec.x, spec.y).setDisplaySize(spec.size, spec.size);
+      action.label?.setPosition(spec.x, spec.y).setFontSize(`${Math.max(13, Math.round(spec.size * 0.21))}px`);
     }
   }
 

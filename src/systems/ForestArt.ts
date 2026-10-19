@@ -35,7 +35,7 @@ export function buildForest(scene: Phaser.Scene, level: LevelData, title?: strin
   }
   const art = scene.add.graphics().setDepth(-2);
   for (const platform of level.platforms) {
-    if (level.id === 'custom') continue;
+    if (level.id === 'custom' || platform.awakening) continue;
     const { x, y, width, height, kind } = platform;
     art.fillStyle(0x715847).fillRoundedRect(x, y + 5, width, height, 10);
     art.fillStyle(palette.earth).fillRoundedRect(x, y + 8, width, height - 8, 10);

@@ -11,7 +11,7 @@
     "lint": "eslint .",
     "verify": "pnpm lint && pnpm test && pnpm build && pnpm check:dist",
     "check:dist": "node scripts/check-dist.mjs",
-    "test": "node tests/progress.test.mjs && node tests/progress-notice.test.mjs && node tests/player-flow.test.mjs && node tests/preload.test.mjs && node tests/release-support.test.mjs && node tests/custom-map.test.mjs && node tests/asset-geometry.test.mjs && node tests/platform-physics.test.mjs && node tests/platform-material.test.mjs && node tests/editor-grid.test.mjs && node tests/scene-preview.test.mjs && node tests/editor-clipboard.test.mjs && node tests/scene-layers.test.mjs && node tests/editor-draft.test.mjs && node tests/editor-viewport.test.mjs && node tests/editor-selection.test.mjs && node tests/editor-model.test.mjs && node tests/editor-workflow.test.mjs"
+    "test": "node tests/progress.test.mjs && node tests/progress-notice.test.mjs && node tests/player-flow.test.mjs && node tests/preload.test.mjs && node tests/release-support.test.mjs && node tests/awakening.test.mjs && node tests/bubble-shield.test.mjs && node tests/skill-effects.test.mjs && node tests/effect-panel.test.mjs && node tests/custom-map.test.mjs && node tests/asset-geometry.test.mjs && node tests/platform-physics.test.mjs && node tests/platform-material.test.mjs && node tests/editor-grid.test.mjs && node tests/scene-preview.test.mjs && node tests/editor-clipboard.test.mjs && node tests/scene-layers.test.mjs && node tests/editor-draft.test.mjs && node tests/editor-viewport.test.mjs && node tests/editor-selection.test.mjs && node tests/editor-model.test.mjs && node tests/editor-workflow.test.mjs"
   },
   "dependencies": {
     "phaser": "3.90.0"

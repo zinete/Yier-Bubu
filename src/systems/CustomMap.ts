@@ -102,8 +102,19 @@ export function parseCustomMap(input: unknown, playable = true): CustomMap {
   const platforms = list(raw.platforms, 200, '平台').map((value, i) => {
     const p = object(value);
     if (p.kind !== 'ground' && p.kind !== 'platform') fail('平台类型不正确');
-    return { ...rectangle(p, `平台${i + 1}`), id: `platform-${i}`, kind: p.kind as 'ground' | 'platform' };
+    const rect = rectangle(p, `平台${i + 1}`);
+    const awakening = p.awakening === undefined ? undefined : object(p.awakening);
+    if (awakening && p.kind !== 'platform') fail('星光唤醒只支持跳跃平台，不能用于地面');
+    const offsets = awakening ? {
+      budOffsetX: number(awakening.budOffsetX, 16 - rect.x, width - 16 - rect.x, '花苞相对 X'),
+      budOffsetY: number(awakening.budOffsetY, 24 - rect.y, 516 - rect.y, '花苞相对 Y'),
+      durationMs: number(awakening.durationMs, 3000, 30000, '星光平台持续时间（毫秒）'),
+    } : undefined;
+    return { ...rect, id: `platform-${i}`, kind: p.kind as 'ground' | 'platform', ...(offsets ? { awakening: offsets } : {}) };
   });
+  if (platforms.filter((p) => p.awakening).length > 20) fail('星光平台最多 20 个');
+  if (raw.awakeningGoal !== undefined && typeof raw.awakeningGoal !== 'boolean') fail('星光终点锁定设置不正确');
+  if (raw.awakeningGoal && !platforms.some((p) => p.awakening)) fail('锁定终点前至少放置一个星光平台');
   const spawn = point(raw.spawn, '出生点');
   const checkpoint = point(raw.checkpoint, '检查点');
   const flag = rectangle(raw.flag, '终点');
@@ -165,7 +176,7 @@ export function parseCustomMap(input: unknown, playable = true): CustomMap {
       solid: p.solid === undefined ? p.assetId === 'builtin-moss-platform' : p.solid as boolean };
   });
   if (playable) {
-    const surfaces = [...platforms, ...decorations.filter((p) => p.solid)];
+    const surfaces = [...platforms.filter((p) => !p.awakening), ...decorations.filter((p) => p.solid)];
     if (!surfaces.length) fail('至少需要一个平台');
     for (const [label, p] of [['出生点', spawn], ['检查点', checkpoint]] as const) {
       if (!surfaces.some((surface) => p.x >= surface.x + 20 && p.x <= surface.x + surface.width - 20 && p.y <= surface.y))
@@ -208,5 +219,6 @@ export function parseCustomMap(input: unknown, playable = true): CustomMap {
   return identifyMapObjects({ version: 1, title: (root.title as string).trim(), assets, decorations, scene, platformMaterials, level: {
     id: 'custom', width, timeLimit: number(raw.timeLimit, 30, 600, '时间限制'),
     spawn, checkpoint, flag, platforms, coins: list(raw.coins, 300, '星星').map((p) => ({ ...point(p, '星星'), ...(Array.isArray(p) ? {} : appearance(p)) })), enemies,
+    ...(raw.awakeningGoal === undefined ? {} : { awakeningGoal: raw.awakeningGoal as boolean }),
   } });
 }
