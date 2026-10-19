@@ -2,6 +2,7 @@ import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
 import vm from 'node:vm';
 import ts from 'typescript';
+import { editorDocument, editorHistory } from './helpers/editor-model.mjs';
 function load(path, require = () => ({}), globals = {}) {
   const module = { exports: {} };
   vm.runInNewContext(ts.transpileModule(readFileSync(path, 'utf8'), {
@@ -45,6 +46,8 @@ const assetGeometry = load('src/systems/AssetGeometry.ts');
 let previewElement;
 const { EditorScene } = load('src/scenes/EditorScene.ts', (name) => {
   if (name === 'phaser') return { default: { Scene: class {} } };
+  if (name.endsWith('/EditorDocument')) return editorDocument;
+  if (name.endsWith('/EditorHistory')) return editorHistory;
   if (name.endsWith('/constants')) return load('src/config/constants.ts');
   if (name.endsWith('/ObjectGeometry')) return geometry;
   if (name.endsWith('/CustomMap')) return customMap;
@@ -53,6 +56,7 @@ const { EditorScene } = load('src/scenes/EditorScene.ts', (name) => {
   if (name.endsWith('/PlatformMaterial')) return load('src/systems/PlatformMaterial.ts');
   return {};
 }, {
+  structuredClone: globalThis.structuredClone,
   cancelAnimationFrame: () => {}, requestAnimationFrame: () => 1,
   document: { createElementNS: () => ({ dataset: {}, setAttribute() {}, innerHTML: '' }) },
 });
@@ -67,7 +71,7 @@ function sceneFor(kind) {
   Object.assign(scene, { map: customMap.newMap(), tool: kind, undo: [], redo: [],
     paintWidth: 173, paintHeight: 35, renderFrame: 0, previewFrame: 0,
     root: { querySelector: (selector) => selector === 'svg' ? svg : {} },
-    render() {}, scheduleCanvas() {}, message() {},
+    render() { this.commitHistory(); }, scheduleCanvas() {}, message() {},
   });
   return scene;
 }

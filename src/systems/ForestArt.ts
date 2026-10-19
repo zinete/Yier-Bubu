@@ -4,7 +4,7 @@ import type { SceneTheme } from './CustomMap';
 import { SCENE_PALETTES, backdropLayers } from './SceneBackdrop';
 
 /** 绘本森林：代码绘制的分层场景，碰撞仍由关卡数据管理。 */
-export function buildForest(scene: Phaser.Scene, level: LevelData, title?: string, theme: SceneTheme = 'forest', customBackground = false, parallax = 0.2): void {
+export function buildForest(scene: Phaser.Scene, level: LevelData, title?: string, theme: SceneTheme = 'forest', customBackground = false, parallax = 0.2, editableLayers = false): void {
   const palette = SCENE_PALETTES[theme];
   const skyKey = `scene-sky-${theme}`;
   if (!scene.textures.exists(skyKey)) {
@@ -72,6 +72,8 @@ export function buildForest(scene: Phaser.Scene, level: LevelData, title?: strin
     tree.fillStyle(theme === 'snow' ? 0xe6f3ff : palette.light).fillCircle(x + 42, 162, 62);
     tree.fillStyle(0xc2d795, 0.5).fillEllipse(x + 30, 139, 58, 26);
   }
+  // 分层地图不再注入编辑器中不存在的路牌和章节文字。
+  if (editableLayers) return;
   const sign = scene.add.graphics().setDepth(1);
   sign.fillStyle(0x8d7452).fillRoundedRect(170, 364, 8, 80, 3);
   sign.fillStyle(0xfff1cc).fillRoundedRect(125, 350, 100, 37, 8);

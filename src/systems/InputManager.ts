@@ -12,12 +12,12 @@ export class InputManager {
   private attackPressed = false;
   constructor(private readonly scene: Phaser.Scene) {
     const keyboard = scene.input.keyboard;
-    if (!keyboard) throw new Error('键盘输入不可用');
+    const keys = (...names: string[]): Phaser.Input.Keyboard.Key[] => keyboard ? names.map((name) => keyboard.addKey(name)) : [];
     this.keyboard = {
-      left: [keyboard.addKey('A'), keyboard.addKey('LEFT')],
-      right: [keyboard.addKey('D'), keyboard.addKey('RIGHT')],
-      jump: [keyboard.addKey('W'), keyboard.addKey('SPACE'), keyboard.addKey('UP')],
-      attack: [keyboard.addKey('J')],
+      left: keys('A', 'LEFT'),
+      right: keys('D', 'RIGHT'),
+      jump: keys('W', 'SPACE', 'UP'),
+      attack: keys('J'),
     };
     scene.game.events.on('virtual-control', this.setVirtual, this);
     scene.game.events.on('blur', this.reset, this);

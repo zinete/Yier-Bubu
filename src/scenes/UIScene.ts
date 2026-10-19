@@ -4,6 +4,7 @@ import { computeUILayout, isTouchPrimaryDevice } from '../systems/UILayout';
 import type { AudioSettings } from '../systems/AudioManager';
 import type { Control } from '../systems/InputManager';
 import type { HudState } from '../types/game';
+import { openFeedback } from '../systems/ReleaseSupport';
 
 const TEXT_RESOLUTION = Math.min(window.devicePixelRatio || 1, 2);
 const MAX_HEALTH = 3;
@@ -33,6 +34,7 @@ export class UIScene extends Phaser.Scene {
   private joystickThumb?: Phaser.GameObjects.Arc;
   private joystickHitZone?: Phaser.GameObjects.Zone;
   private readonly actionControls: ActionControl[] = [];
+  private readonly actionPointers = new Map<Control, number>();
   private tutorial!: Phaser.GameObjects.Container;
   private tutorialTitle!: Phaser.GameObjects.Text;
   private tutorialHint!: Phaser.GameObjects.Text;
@@ -49,6 +51,7 @@ export class UIScene extends Phaser.Scene {
   create(): void {
     this.hearts.length = 0;
     this.actionControls.length = 0;
+    this.actionPointers.clear();
     this.lastHudSignature = '';
     this.lastAudioSignature = '';
     if (!this.textures.exists('forest-hud')) {
@@ -87,6 +90,9 @@ export class UIScene extends Phaser.Scene {
         .on('pointerup', () => this.game.events.emit('game-action', action));
       this.pauseMenu.add(button);
     }
+    this.pauseMenu.add(this.add.text(0, 54, '试玩反馈与版本', {
+      fontSize: '16px', color: '#fff4cf', backgroundColor: '#416b59', padding: { x: 18, y: 14 },
+    }).setOrigin(0.5).setInteractive({ useHandCursor: true }).on('pointerup', openFeedback));
     this.hudPanel = this.add.image(0, 0, 'forest-hud').setOrigin(0, 0).setScrollFactor(0);
     this.portraitFrame = this.add.image(0, 0, 'ui-portrait-frame').setScrollFactor(0).setDepth(2);
     this.portrait = this.add.sprite(0, 0, 'characters', 0).setScrollFactor(0).setDepth(3);
@@ -111,6 +117,8 @@ export class UIScene extends Phaser.Scene {
     );
 
     if (isTouchPrimaryDevice()) this.createMobileControls();
+    this.game.events.on('blur', this.releaseMobileControls, this);
+    this.game.events.on('hidden', this.releaseMobileControls, this);
     this.scale.on(Phaser.Scale.Events.RESIZE, this.layout, this);
     this.layout();
     this.render(this.registry, this.registry.get('hud') as HudState);
@@ -177,6 +185,7 @@ export class UIScene extends Phaser.Scene {
     this.pauseButton?.setTexture(state.paused ? 'ui-button-play' : 'ui-button-pause');
     this.pauseText?.setVisible(state.paused);
     this.pauseMenu?.setVisible(state.paused);
+    if (state.paused) this.releaseMobileControls();
     const homeButton = this.pauseMenu?.list[2] as Phaser.GameObjects.Text | undefined;
     homeButton?.setText(state.customMap ? '返回编辑' : '返回主页');
     this.pauseText?.setText(`已暂停\nP / Esc 继续 · R 重玩 · H ${state.customMap ? '返回编辑' : '返回主页'}`);
@@ -209,6 +218,7 @@ export class UIScene extends Phaser.Scene {
       .setStrokeStyle(2, 0x2f80ed, 0.7)
       .setScrollFactor(0);
     this.joystickHitZone.on('pointerdown', (pointer: Phaser.Input.Pointer) => {
+      if (this.joystickPointerId !== undefined || this.registry.get('hud')?.paused) return;
       this.joystickPointerId = pointer.id;
       this.updateJoystick(pointer);
     });
@@ -226,22 +236,31 @@ export class UIScene extends Phaser.Scene {
       this.game.events.emit('virtual-control', control, down);
     };
     button
-      .on('pointerdown', () => emit(true))
-      .on('pointerup', () => emit(false))
-      .on('pointerout', () => emit(false))
-      .on('pointerupoutside', () => emit(false));
+      .on('pointerdown', (pointer: Phaser.Input.Pointer) => {
+        if (this.actionPointers.has(control) || this.registry.get('hud')?.paused) return;
+        this.actionPointers.set(control, pointer.id);
+        emit(true);
+      })
+      .on('pointerout', (pointer: Phaser.Input.Pointer) => {
+        if (this.actionPointers.get(control) !== pointer.id) return;
+        this.actionPointers.delete(control);
+        emit(false);
+      });
     return { button, control, size };
   }
 
   private layout(): void {
     const width = this.scale.width;
     const height = this.scale.height;
+    this.releaseMobileControls();
+    if (isTouchPrimaryDevice() && height > width && this.registry.get('hud')?.paused === false)
+      this.game.events.emit('game-action', 'pause');
     const layout = computeUILayout(width, height);
     const margin = layout.margin;
     this.tutorial.setPosition(width / 2, Math.max(margin + layout.hud.height + 85, height * 0.34))
       .setScale(Math.min(1, (width - 28) / 340));
-    this.pauseText.setPosition(width / 2, height / 2);
-    this.pauseMenu.setPosition(width / 2, height / 2 + 90);
+    this.pauseText.setPosition(width / 2, Math.max(65, Math.min(height / 2 - 20, height - 218)));
+    this.pauseMenu.setPosition(width / 2, Math.min(height / 2 + 82, height - 100));
     this.journeyText.setPosition(margin, margin + layout.hud.height + 12);
     this.skillBar.setPosition(width / 2 - 75, height - 42);
     this.skillText.setPosition(width / 2, height - 65).setFontSize(width < 760 ? '13px' : '16px');
@@ -316,6 +335,12 @@ export class UIScene extends Phaser.Scene {
   }
 
   private onPointerUp(pointer: Phaser.Input.Pointer): void {
+    for (const action of this.actionControls) {
+      if (this.actionPointers.get(action.control) !== pointer.id) continue;
+      this.actionPointers.delete(action.control);
+      action.button.setAlpha(1);
+      this.game.events.emit('virtual-control', action.control, false);
+    }
     if (pointer.id !== this.joystickPointerId) return;
     this.joystickPointerId = undefined;
     this.setJoystickDirection(0);
@@ -343,7 +368,21 @@ export class UIScene extends Phaser.Scene {
     this.game.events.emit('virtual-control', 'right', direction > 0);
   }
 
+  private releaseMobileControls(): void {
+    this.joystickPointerId = undefined;
+    this.setJoystickDirection(0);
+    this.joystickThumb?.setPosition(this.joystickBase?.x ?? 0, this.joystickBase?.y ?? 0);
+    for (const action of this.actionControls) {
+      this.game.events.emit('virtual-control', action.control, false);
+      action.button.setAlpha(1);
+    }
+    this.actionPointers.clear();
+  }
+
   private destroyUi(): void {
+    this.releaseMobileControls();
+    this.game.events.off('blur', this.releaseMobileControls, this);
+    this.game.events.off('hidden', this.releaseMobileControls, this);
     this.scale.off(Phaser.Scale.Events.RESIZE, this.layout, this);
     this.input.off('pointermove', this.onPointerMove, this);
     this.input.off('pointerup', this.onPointerUp, this);

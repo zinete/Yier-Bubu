@@ -64,6 +64,7 @@ export function sceneBackdropSvg(settings: SceneSettings, width: number, backgro
       : `<image href="${background.data}" width="${width}" height="540" preserveAspectRatio="none"/>`;
     return html + `<g data-preview-parallax="${settings.parallax}">${image}</g>`;
   }
+  if (settings.baseMode === 'sky') return html;
   for (const layer of backdropLayers(settings.theme, settings.parallax)) {
     if (layer.repeat) {
       const id = `scene-preview-${layer.id}`;

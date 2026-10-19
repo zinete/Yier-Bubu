@@ -1,6 +1,7 @@
 // c:\Users\gyc\Documents\trae_projects\ss\Yier&Bubu\src\systems\CameraManager.ts
 import Phaser from 'phaser';
-import { DESIGN_HEIGHT, DESIGN_WIDTH, WORLD_HEIGHT, WORLD_WIDTH } from '../config/constants';
+import { WORLD_HEIGHT, WORLD_WIDTH } from '../config/constants';
+import { worldCameraView } from './CameraViewport';
 
 type FollowTarget = Phaser.GameObjects.GameObject & { x: number; y: number };
 
@@ -11,10 +12,8 @@ export class CameraManager {
     const apply = (): void => {
       const width = scene.scale.width;
       const height = scene.scale.height;
-      // 纵向视野锁定 540 世界单位，宽屏只增加横向可视范围；World 单位永不缩放。
-      const zoom = Math.min(height / DESIGN_HEIGHT, width / DESIGN_WIDTH);
-      const viewWidth = width / zoom;
-      const viewHeight = height / zoom;
+      // 保留至少 960×540 的基准视野，宽屏增加横向、窄屏增加纵向范围；World 坐标不变。
+      const { zoom, width: viewWidth, height: viewHeight } = worldCameraView(width, height);
       camera
         .setBounds(0, 0, worldWidth, WORLD_HEIGHT)
         .setZoom(zoom)

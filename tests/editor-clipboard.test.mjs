@@ -2,6 +2,7 @@ import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
 import vm from 'node:vm';
 import ts from 'typescript';
+import { editorDocument, editorHistory } from './helpers/editor-model.mjs';
 function load(path, require = () => ({}), globals = {}) {
   const module = { exports: {} };
   vm.runInNewContext(ts.transpileModule(readFileSync(path, 'utf8'), {
@@ -14,6 +15,8 @@ const geometry = load('src/systems/ObjectGeometry.ts');
 const builtins = maps.BUILTIN_ASSET_IDS.map((id) => ({ id }));
 const { EditorScene } = load('src/scenes/EditorScene.ts', (name) => {
   if (name === 'phaser') return { default: { Scene: class {} } };
+  if (name.endsWith('/EditorDocument')) return editorDocument;
+  if (name.endsWith('/EditorHistory')) return editorHistory;
   if (name.endsWith('/CustomMap')) return maps;
   if (name.endsWith('/ObjectGeometry')) return geometry;
   if (name.endsWith('/DefaultAssets')) return { mapAssets: (map) => [...builtins, ...(map.assets ?? [])] };
@@ -37,7 +40,7 @@ function setup(kind = 'platform') {
     getBoundingClientRect: () => ({ left: 0, top: 0, width: 1920, height: 540 }) };
   Object.assign(scene, { map: maps.newMap(), tool: 'select', undo: [], redo: [], objectSerial: 0,
     root: { isConnected: true, querySelector: (selector) => selector === 'svg' ? svg : buttons[selector.match(/data-action="([^"]+)"/)?.[1]] },
-    render() { this.renderClipboardControls(); }, message(text) { this.lastMessage = text; },
+    render() { this.commitHistory(); this.renderClipboardControls(); }, message(text) { this.lastMessage = text; },
   });
   const p = { x: 320, y: 176, assetId: 'builtin-moss-platform' };
   if (kind === 'platform') scene.map.level.platforms.push({ ...p, id: 'source-p', width: 160, height: 32, kind: 'platform' });

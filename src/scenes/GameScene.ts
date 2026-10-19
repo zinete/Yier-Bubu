@@ -14,10 +14,11 @@ import { buildForest } from '../systems/ForestArt';
 import { SkillEffects } from '../systems/SkillEffects';
 import { parseCustomMap, playablePlatforms, type CustomMap } from '../systems/CustomMap';
 import { canLandOnPlatform } from '../systems/PlatformPhysics';
-import { mapAssets, DEFAULT_OBJECT_SKINS } from '../systems/DefaultAssets';
+import { mapAssets, runtimeMapAssets, DEFAULT_OBJECT_SKINS } from '../systems/DefaultAssets';
 import { assetLayout, readAssetGeometry, type AssetGeometry } from '../systems/AssetGeometry';
 import { materialFor, platformSlices } from '../systems/PlatformMaterial';
 import { CUSTOM_OBJECTS } from '../systems/ObjectGeometry';
+import { mountSceneLayers } from '../systems/SceneLayers';
 export class GameScene extends Phaser.Scene {
   private player!: Player;
   private inputManager!: InputManager;
@@ -29,6 +30,7 @@ export class GameScene extends Phaser.Scene {
   private coins!: Phaser.Physics.Arcade.Group;
   private goal!: Phaser.Physics.Arcade.Image;
   private status: GameStatus = 'playing';
+  private leaving = false;
   private health = 3;
   private score = 0;
   private collected = 0;
@@ -55,14 +57,14 @@ export class GameScene extends Phaser.Scene {
       : getLevel(beginLevel(data.levelId ?? loadProgress().currentLevel));
   }
   preload(): void {
-    for (const [index, asset] of (this.customMap ? mapAssets(this.customMap) : []).entries()) {
+    for (const [index, asset] of (this.customMap ? runtimeMapAssets(this.customMap) : []).entries()) {
       const key = `custom-asset-${Date.now()}-${index}`;
       this.customTextures.set(asset.id, key);
       this.load.image(key, asset.data);
     }
   }
   create(): void {
-    for (const asset of this.customMap ? mapAssets(this.customMap) : []) {
+    for (const asset of this.customMap ? runtimeMapAssets(this.customMap) : []) {
       const key = this.customTextures.get(asset.id);
       if (!key || !this.textures.exists(key)) continue;
       const texture = this.textures.get(key);
@@ -83,6 +85,7 @@ export class GameScene extends Phaser.Scene {
     this.time.paused = false;
     this.tweens.resumeAll();
     this.status = 'playing';
+    this.leaving = false;
     this.health = 3;
     this.score = 0;
     this.collected = 0;
@@ -118,7 +121,8 @@ export class GameScene extends Phaser.Scene {
         body.checkCollision.right = false;
       }
     }
-    const character = this.registry.get(REGISTRY.CHARACTER) as CharacterId;
+    const chosen = this.registry.get(REGISTRY.CHARACTER) as CharacterId | undefined;
+    const character: CharacterId = chosen === 'bubu' ? 'bubu' : 'yier';
     this.player = new Player(this, this.level.spawn.x, this.level.spawn.y, character);
     this.physics.add.collider(this.player, this.platforms, undefined, (player, platform) => {
       if (!(platform as Phaser.GameObjects.GameObject).getData('oneWay')) return true;
@@ -152,6 +156,7 @@ export class GameScene extends Phaser.Scene {
     this.physics.add.overlap(this.playerProjectiles, this.enemies, (projectile, enemy) => {
       const shot = projectile as Projectile;
       const target = enemy as Enemy;
+      if (this.status !== 'playing' || !shot.active || !shot.arcadeBody.enable || shot.firedBy !== 'player') return;
       if (target.defeat()) {
         this.effects.impact(shot.x, shot.y);
         this.feedback(target.x, target.y - 20, '+200', 0x74cf65);
@@ -163,7 +168,7 @@ export class GameScene extends Phaser.Scene {
     // Arcade 的 Sprite vs Group 回调始终先传 Sprite，再传组内成员。
     this.physics.add.overlap(this.player, this.enemyProjectiles, (_, projectile) => {
       const shot = projectile as Projectile;
-      if (this.status !== 'playing' || !shot.active || !shot.arcadeBody.enable) return;
+      if (this.status !== 'playing' || !shot.active || !shot.arcadeBody.enable || shot.firedBy !== 'enemy') return;
       const sourceX = shot.x;
       shot.disableBody(true, true);
       this.damage(false, sourceX);
@@ -184,6 +189,8 @@ export class GameScene extends Phaser.Scene {
       },
     });
     this.game.events.on('game-action', this.handleAction, this);
+    this.game.events.on('blur', this.pauseWhenUnfocused, this);
+    this.game.events.on('hidden', this.pauseWhenUnfocused, this);
     this.events.once(Phaser.Scenes.Events.SHUTDOWN, () => this.destroyGameScene());
     this.publishHud();
   }
@@ -246,7 +253,8 @@ export class GameScene extends Phaser.Scene {
   private createBackground(): void {
     const settings = this.customMap?.scene;
     const bgAsset = this.customMap ? mapAssets(this.customMap).find((asset) => asset.id === settings?.backgroundAssetId) : undefined;
-    buildForest(this, this.level, this.customMap?.title, settings?.theme, !!bgAsset, settings?.parallax);
+    buildForest(this, this.level, this.customMap?.title, settings?.theme, !!bgAsset || settings?.baseMode === 'sky', settings?.parallax, settings?.layers !== undefined);
+    if (settings?.layers) mountSceneLayers(this, settings.layers, this.customTextures);
     if (bgAsset && settings) {
       const key = this.customTextures.get(bgAsset.id);
       if (key && this.textures.exists(key)) {
@@ -394,6 +402,7 @@ export class GameScene extends Phaser.Scene {
   private finish(won: boolean, message?: string): void {
     if (this.status !== 'playing') return;
     this.status = won ? 'won' : 'lost';
+    this.inputManager.reset();
     this.physics.world.pause();
     this.time.paused = true;
     this.effects.setPaused(true);
@@ -416,7 +425,9 @@ export class GameScene extends Phaser.Scene {
     });
   }
   private handleAction(action: 'pause' | 'sound' | 'restart' | 'home'): void {
-    if ((action === 'restart' || action === 'home') && this.status === 'paused') {
+    if (action === 'restart' || action === 'home') {
+      if (this.status !== 'paused' || this.leaving) return;
+      this.leaving = true;
       this.scene.stop(SCENE.UI);
       if (action === 'restart') this.scene.restart({ levelId: this.level.id, customMap: this.customMap });
       else this.scene.start(this.customMap ? SCENE.EDITOR : SCENE.START);
@@ -426,6 +437,7 @@ export class GameScene extends Phaser.Scene {
       this.audioManager.toggleSound();
       return;
     }
+    if (action !== 'pause') return;
     if (this.status !== 'playing' && this.status !== 'paused') return;
     this.status = this.status === 'playing' ? 'paused' : 'playing';
     this.inputManager.reset();
@@ -461,6 +473,8 @@ export class GameScene extends Phaser.Scene {
     this.customTextures.clear();
     this.assetGeometry.clear();
     this.game.events.off('game-action', this.handleAction, this);
+    this.game.events.off('blur', this.pauseWhenUnfocused, this);
+    this.game.events.off('hidden', this.pauseWhenUnfocused, this);
     this.game.events.off('player-jump', this.onJump, this);
     this.input.keyboard?.off('keydown-ESC', this.pauseFromKeyboard, this);
     this.input.keyboard?.off('keydown-P', this.pauseFromKeyboard, this);
@@ -479,7 +493,8 @@ export class GameScene extends Phaser.Scene {
     try { localStorage.setItem('yierBubuTutorialV1', 'done'); } catch { /* 下次可再次引导。 */ }
     this.publishHud();
   }
-  private pauseFromKeyboard(): void { this.handleAction('pause'); }
+  private pauseWhenUnfocused(): void { if (this.status === 'playing') this.handleAction('pause'); }
+  private pauseFromKeyboard(event?: KeyboardEvent): void { if (!event?.repeat) this.handleAction('pause'); }
   private muteFromKeyboard(): void { this.handleAction('sound'); }
   private restartFromKeyboard(): void { this.handleAction('restart'); }
   private homeFromKeyboard(): void { this.handleAction('home'); }

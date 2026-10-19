@@ -1,0 +1,805 @@
+{
+  "version": 1,
+  "title": "星光速递 · 分层森林示范",
+  "scene": {
+    "theme": "forest",
+    "backgroundMode": "repeat",
+    "parallax": 0.2,
+    "baseMode": "sky",
+    "layers": [
+      {
+        "id": "forest-sky",
+        "name": "柔光天空",
+        "assetId": "builtin-scene-sky",
+        "group": "background",
+        "mode": "repeat",
+        "x": 0,
+        "y": 0,
+        "width": 1088,
+        "height": 544,
+        "parallax": 0,
+        "opacity": 1,
+        "visible": true,
+        "locked": false
+      },
+      {
+        "id": "forest-mountains",
+        "name": "远山与薄雾",
+        "assetId": "builtin-scene-mountains",
+        "group": "background",
+        "mode": "repeat",
+        "x": 0,
+        "y": 0,
+        "width": 1280,
+        "height": 512,
+        "parallax": 0.16,
+        "opacity": 0.75,
+        "visible": true,
+        "locked": false
+      },
+      {
+        "id": "forest-trees",
+        "name": "林间树群",
+        "assetId": "builtin-scene-trees",
+        "group": "background",
+        "mode": "repeat",
+        "x": 0,
+        "y": 48,
+        "width": 896,
+        "height": 400,
+        "parallax": 0.45,
+        "opacity": 0.65,
+        "visible": true,
+        "locked": false
+      },
+      {
+        "id": "forest-foliage",
+        "name": "低矮前景枝叶",
+        "assetId": "builtin-scene-foliage",
+        "group": "foreground",
+        "mode": "repeat",
+        "x": 0,
+        "y": 256,
+        "width": 768,
+        "height": 288,
+        "parallax": 1,
+        "opacity": 0.72,
+        "visible": true,
+        "locked": false
+      }
+    ]
+  },
+  "assets": [],
+  "platformMaterials": {
+    "builtin-moss-platform": {
+      "mode": "repeat",
+      "surfaceY": 0.395,
+      "leftCap": 0.12,
+      "rightCap": 0.12
+    }
+  },
+  "level": {
+    "id": "custom",
+    "width": 12288,
+    "timeLimit": 60,
+    "spawn": {
+      "x": 96,
+      "y": 432,
+      "assetId": "builtin-lantern-marker"
+    },
+    "checkpoint": {
+      "x": 6208,
+      "y": 432,
+      "assetId": "builtin-lantern-marker"
+    },
+    "flag": {
+      "x": 12032,
+      "y": 272,
+      "width": 32,
+      "height": 160,
+      "assetId": "builtin-lantern-marker"
+    },
+    "platforms": [
+      {
+        "id": "warmup-ground",
+        "x": 0,
+        "y": 432,
+        "width": 960,
+        "height": 96,
+        "kind": "ground",
+        "assetId": "builtin-moss-platform"
+      },
+      {
+        "id": "warmup-reward",
+        "x": 768,
+        "y": 352,
+        "width": 192,
+        "height": 32,
+        "kind": "platform",
+        "assetId": "builtin-moss-platform"
+      },
+      {
+        "id": "meadow-ground",
+        "x": 1088,
+        "y": 432,
+        "width": 1088,
+        "height": 96,
+        "kind": "ground",
+        "assetId": "builtin-moss-platform"
+      },
+      {
+        "id": "meadow-reward",
+        "x": 1952,
+        "y": 352,
+        "width": 224,
+        "height": 32,
+        "kind": "platform",
+        "assetId": "builtin-moss-platform"
+      },
+      {
+        "id": "ridge-ground",
+        "x": 2304,
+        "y": 400,
+        "width": 768,
+        "height": 128,
+        "kind": "ground",
+        "assetId": "builtin-moss-platform"
+      },
+      {
+        "id": "ridge-reward",
+        "x": 2848,
+        "y": 320,
+        "width": 224,
+        "height": 32,
+        "kind": "platform",
+        "assetId": "builtin-moss-platform"
+      },
+      {
+        "id": "battle-ground",
+        "x": 3200,
+        "y": 432,
+        "width": 1152,
+        "height": 96,
+        "kind": "ground",
+        "assetId": "builtin-moss-platform"
+      },
+      {
+        "id": "battle-overlook",
+        "x": 4096,
+        "y": 352,
+        "width": 256,
+        "height": 32,
+        "kind": "platform",
+        "assetId": "builtin-moss-platform"
+      },
+      {
+        "id": "flower-ground",
+        "x": 4480,
+        "y": 416,
+        "width": 896,
+        "height": 112,
+        "kind": "ground",
+        "assetId": "builtin-moss-platform"
+      },
+      {
+        "id": "flower-reward",
+        "x": 5152,
+        "y": 336,
+        "width": 224,
+        "height": 32,
+        "kind": "platform",
+        "assetId": "builtin-moss-platform"
+      },
+      {
+        "id": "checkpoint-ground",
+        "x": 5504,
+        "y": 432,
+        "width": 1440,
+        "height": 96,
+        "kind": "ground",
+        "assetId": "builtin-moss-platform"
+      },
+      {
+        "id": "bridge-approach",
+        "x": 6752,
+        "y": 352,
+        "width": 192,
+        "height": 32,
+        "kind": "platform",
+        "assetId": "builtin-moss-platform"
+      },
+      {
+        "id": "sky-bridge-left",
+        "x": 7072,
+        "y": 400,
+        "width": 256,
+        "height": 32,
+        "kind": "platform",
+        "assetId": "builtin-moss-platform"
+      },
+      {
+        "id": "sky-bridge-top",
+        "x": 7440,
+        "y": 352,
+        "width": 256,
+        "height": 32,
+        "kind": "platform",
+        "assetId": "builtin-moss-platform"
+      },
+      {
+        "id": "sky-bridge-right",
+        "x": 7808,
+        "y": 400,
+        "width": 256,
+        "height": 32,
+        "kind": "platform",
+        "assetId": "builtin-moss-platform"
+      },
+      {
+        "id": "landing-ground",
+        "x": 8192,
+        "y": 432,
+        "width": 896,
+        "height": 96,
+        "kind": "ground",
+        "assetId": "builtin-moss-platform"
+      },
+      {
+        "id": "landing-reward",
+        "x": 8896,
+        "y": 352,
+        "width": 192,
+        "height": 32,
+        "kind": "platform",
+        "assetId": "builtin-moss-platform"
+      },
+      {
+        "id": "last-ridge-ground",
+        "x": 9216,
+        "y": 416,
+        "width": 960,
+        "height": 112,
+        "kind": "ground",
+        "assetId": "builtin-moss-platform"
+      },
+      {
+        "id": "last-ridge-reward",
+        "x": 9952,
+        "y": 336,
+        "width": 224,
+        "height": 32,
+        "kind": "platform",
+        "assetId": "builtin-moss-platform"
+      },
+      {
+        "id": "finish-ground",
+        "x": 10304,
+        "y": 432,
+        "width": 1984,
+        "height": 96,
+        "kind": "ground",
+        "assetId": "builtin-moss-platform"
+      },
+      {
+        "id": "finish-step",
+        "x": 11520,
+        "y": 352,
+        "width": 256,
+        "height": 32,
+        "kind": "platform",
+        "assetId": "builtin-moss-platform"
+      },
+      {
+        "id": "finish-crown",
+        "x": 11872,
+        "y": 288,
+        "width": 160,
+        "height": 32,
+        "kind": "platform",
+        "assetId": "builtin-moss-platform"
+      }
+    ],
+    "coins": [
+      {
+        "x": 256,
+        "y": 400,
+        "assetId": "builtin-gold-star"
+      },
+      {
+        "x": 384,
+        "y": 400,
+        "assetId": "builtin-gold-star"
+      },
+      {
+        "x": 816,
+        "y": 320,
+        "assetId": "builtin-gold-star"
+      },
+      {
+        "x": 912,
+        "y": 320,
+        "assetId": "builtin-gold-star"
+      },
+      {
+        "x": 1024,
+        "y": 352,
+        "assetId": "builtin-gold-star"
+      },
+      {
+        "x": 1232,
+        "y": 400,
+        "assetId": "builtin-gold-star"
+      },
+      {
+        "x": 1376,
+        "y": 400,
+        "assetId": "builtin-gold-star"
+      },
+      {
+        "x": 1536,
+        "y": 368,
+        "assetId": "builtin-gold-star"
+      },
+      {
+        "x": 2000,
+        "y": 320,
+        "assetId": "builtin-gold-star"
+      },
+      {
+        "x": 2096,
+        "y": 320,
+        "assetId": "builtin-gold-star"
+      },
+      {
+        "x": 2240,
+        "y": 336,
+        "assetId": "builtin-gold-star"
+      },
+      {
+        "x": 2432,
+        "y": 368,
+        "assetId": "builtin-gold-star"
+      },
+      {
+        "x": 2592,
+        "y": 368,
+        "assetId": "builtin-gold-star"
+      },
+      {
+        "x": 2736,
+        "y": 368,
+        "assetId": "builtin-gold-star"
+      },
+      {
+        "x": 2896,
+        "y": 288,
+        "assetId": "builtin-gold-star"
+      },
+      {
+        "x": 3008,
+        "y": 288,
+        "assetId": "builtin-gold-star"
+      },
+      {
+        "x": 3136,
+        "y": 336,
+        "assetId": "builtin-gold-star"
+      },
+      {
+        "x": 3360,
+        "y": 400,
+        "assetId": "builtin-gold-star"
+      },
+      {
+        "x": 3520,
+        "y": 400,
+        "assetId": "builtin-gold-star"
+      },
+      {
+        "x": 3680,
+        "y": 400,
+        "assetId": "builtin-gold-star"
+      },
+      {
+        "x": 4160,
+        "y": 320,
+        "assetId": "builtin-gold-star"
+      },
+      {
+        "x": 4272,
+        "y": 320,
+        "assetId": "builtin-gold-star"
+      },
+      {
+        "x": 4416,
+        "y": 352,
+        "assetId": "builtin-gold-star"
+      },
+      {
+        "x": 4608,
+        "y": 384,
+        "assetId": "builtin-gold-star"
+      },
+      {
+        "x": 4784,
+        "y": 384,
+        "assetId": "builtin-gold-star"
+      },
+      {
+        "x": 5200,
+        "y": 304,
+        "assetId": "builtin-gold-star"
+      },
+      {
+        "x": 5296,
+        "y": 304,
+        "assetId": "builtin-gold-star"
+      },
+      {
+        "x": 5440,
+        "y": 352,
+        "assetId": "builtin-gold-star"
+      },
+      {
+        "x": 5664,
+        "y": 400,
+        "assetId": "builtin-gold-star"
+      },
+      {
+        "x": 5856,
+        "y": 400,
+        "assetId": "builtin-gold-star"
+      },
+      {
+        "x": 6048,
+        "y": 400,
+        "assetId": "builtin-gold-star"
+      },
+      {
+        "x": 6336,
+        "y": 400,
+        "assetId": "builtin-gold-star"
+      },
+      {
+        "x": 6528,
+        "y": 400,
+        "assetId": "builtin-gold-star"
+      },
+      {
+        "x": 6800,
+        "y": 320,
+        "assetId": "builtin-gold-star"
+      },
+      {
+        "x": 6896,
+        "y": 320,
+        "assetId": "builtin-gold-star"
+      },
+      {
+        "x": 7008,
+        "y": 336,
+        "assetId": "builtin-gold-star"
+      },
+      {
+        "x": 7136,
+        "y": 368,
+        "assetId": "builtin-gold-star"
+      },
+      {
+        "x": 7264,
+        "y": 368,
+        "assetId": "builtin-gold-star"
+      },
+      {
+        "x": 7392,
+        "y": 304,
+        "assetId": "builtin-gold-star"
+      },
+      {
+        "x": 7504,
+        "y": 320,
+        "assetId": "builtin-gold-star"
+      },
+      {
+        "x": 7632,
+        "y": 320,
+        "assetId": "builtin-gold-star"
+      },
+      {
+        "x": 7760,
+        "y": 304,
+        "assetId": "builtin-gold-star"
+      },
+      {
+        "x": 7872,
+        "y": 368,
+        "assetId": "builtin-gold-star"
+      },
+      {
+        "x": 8000,
+        "y": 368,
+        "assetId": "builtin-gold-star"
+      },
+      {
+        "x": 8128,
+        "y": 352,
+        "assetId": "builtin-gold-star"
+      },
+      {
+        "x": 8368,
+        "y": 400,
+        "assetId": "builtin-gold-star"
+      },
+      {
+        "x": 8560,
+        "y": 400,
+        "assetId": "builtin-gold-star"
+      },
+      {
+        "x": 8944,
+        "y": 320,
+        "assetId": "builtin-gold-star"
+      },
+      {
+        "x": 9040,
+        "y": 320,
+        "assetId": "builtin-gold-star"
+      },
+      {
+        "x": 9152,
+        "y": 352,
+        "assetId": "builtin-gold-star"
+      },
+      {
+        "x": 9360,
+        "y": 384,
+        "assetId": "builtin-gold-star"
+      },
+      {
+        "x": 9536,
+        "y": 384,
+        "assetId": "builtin-gold-star"
+      },
+      {
+        "x": 9744,
+        "y": 384,
+        "assetId": "builtin-gold-star"
+      },
+      {
+        "x": 10000,
+        "y": 304,
+        "assetId": "builtin-gold-star"
+      },
+      {
+        "x": 10112,
+        "y": 304,
+        "assetId": "builtin-gold-star"
+      },
+      {
+        "x": 10240,
+        "y": 352,
+        "assetId": "builtin-gold-star"
+      },
+      {
+        "x": 10480,
+        "y": 400,
+        "assetId": "builtin-gold-star"
+      },
+      {
+        "x": 10656,
+        "y": 400,
+        "assetId": "builtin-gold-star"
+      },
+      {
+        "x": 10832,
+        "y": 400,
+        "assetId": "builtin-gold-star"
+      },
+      {
+        "x": 11584,
+        "y": 320,
+        "assetId": "builtin-gold-star"
+      },
+      {
+        "x": 11712,
+        "y": 320,
+        "assetId": "builtin-gold-star"
+      },
+      {
+        "x": 11920,
+        "y": 256,
+        "assetId": "builtin-gold-star"
+      },
+      {
+        "x": 11984,
+        "y": 256,
+        "assetId": "builtin-gold-star"
+      }
+    ],
+    "enemies": [
+      {
+        "x": 640,
+        "y": 432,
+        "min": 512,
+        "max": 832,
+        "speed": 48,
+        "assetId": "builtin-leaf-slime"
+      },
+      {
+        "x": 1728,
+        "y": 432,
+        "min": 1536,
+        "max": 1888,
+        "speed": 56,
+        "assetId": "builtin-leaf-slime"
+      },
+      {
+        "x": 3936,
+        "y": 432,
+        "min": 3744,
+        "max": 4096,
+        "speed": 48,
+        "assetId": "builtin-leaf-slime",
+        "attack": {
+          "range": 288,
+          "cooldown": 2200,
+          "projectileSpeed": 320,
+          "projectileArc": -100,
+          "projectileGravity": 600,
+          "projectileLifetime": 1300
+        }
+      },
+      {
+        "x": 4960,
+        "y": 416,
+        "min": 4800,
+        "max": 5120,
+        "speed": 56,
+        "assetId": "builtin-leaf-slime"
+      },
+      {
+        "x": 8704,
+        "y": 432,
+        "min": 8480,
+        "max": 8896,
+        "speed": 64,
+        "assetId": "builtin-leaf-slime"
+      },
+      {
+        "x": 11264,
+        "y": 432,
+        "min": 11040,
+        "max": 11472,
+        "speed": 48,
+        "assetId": "builtin-leaf-slime",
+        "attack": {
+          "range": 304,
+          "cooldown": 2200,
+          "projectileSpeed": 320,
+          "projectileArc": -110,
+          "projectileGravity": 650,
+          "projectileLifetime": 1400
+        }
+      }
+    ]
+  },
+  "decorations": [
+    {
+      "assetId": "builtin-flower-bush",
+      "x": 176,
+      "y": 368,
+      "width": 96,
+      "height": 64,
+      "layer": "back",
+      "solid": false
+    },
+    {
+      "assetId": "builtin-flower-bush",
+      "x": 1152,
+      "y": 368,
+      "width": 128,
+      "height": 64,
+      "layer": "back",
+      "solid": false
+    },
+    {
+      "assetId": "builtin-flower-bush",
+      "x": 2400,
+      "y": 336,
+      "width": 96,
+      "height": 64,
+      "layer": "back",
+      "solid": false
+    },
+    {
+      "assetId": "builtin-lantern-marker",
+      "x": 2080,
+      "y": 336,
+      "width": 48,
+      "height": 96,
+      "layer": "back",
+      "solid": false
+    },
+    {
+      "assetId": "builtin-flower-bush",
+      "x": 3296,
+      "y": 368,
+      "width": 96,
+      "height": 64,
+      "layer": "back",
+      "solid": false
+    },
+    {
+      "assetId": "builtin-lantern-marker",
+      "x": 5280,
+      "y": 320,
+      "width": 48,
+      "height": 96,
+      "layer": "back",
+      "solid": false
+    },
+    {
+      "assetId": "builtin-flower-bush",
+      "x": 5968,
+      "y": 368,
+      "width": 128,
+      "height": 64,
+      "layer": "back",
+      "solid": false
+    },
+    {
+      "assetId": "builtin-flower-bush",
+      "x": 6304,
+      "y": 368,
+      "width": 128,
+      "height": 64,
+      "layer": "back",
+      "solid": false
+    },
+    {
+      "assetId": "builtin-flower-bush",
+      "x": 8288,
+      "y": 368,
+      "width": 96,
+      "height": 64,
+      "layer": "back",
+      "solid": false
+    },
+    {
+      "assetId": "builtin-lantern-marker",
+      "x": 9008,
+      "y": 336,
+      "width": 48,
+      "height": 96,
+      "layer": "back",
+      "solid": false
+    },
+    {
+      "assetId": "builtin-flower-bush",
+      "x": 9328,
+      "y": 352,
+      "width": 96,
+      "height": 64,
+      "layer": "back",
+      "solid": false
+    },
+    {
+      "assetId": "builtin-lantern-marker",
+      "x": 11744,
+      "y": 336,
+      "width": 48,
+      "height": 96,
+      "layer": "back",
+      "solid": false
+    },
+    {
+      "assetId": "builtin-flower-bush",
+      "x": 12096,
+      "y": 368,
+      "width": 128,
+      "height": 64,
+      "layer": "back",
+      "solid": false
+    }
+  ]
+}

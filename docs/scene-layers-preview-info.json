@@ -1,0 +1,25 @@
+{
+  "renderer": "shared SVG + sharp (offline, not browser gameplay)",
+  "cameras": [
+    0,
+    2400
+  ],
+  "layers": [
+    {
+      "id": "forest-sky",
+      "parallax": 0
+    },
+    {
+      "id": "forest-mountains",
+      "parallax": 0.16
+    },
+    {
+      "id": "forest-trees",
+      "parallax": 0.45
+    },
+    {
+      "id": "forest-foliage",
+      "parallax": 1
+    }
+  ]
+}

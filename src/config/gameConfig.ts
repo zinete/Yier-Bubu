@@ -5,12 +5,12 @@ import { StartScene } from '../scenes/StartScene';
 import { GameScene } from '../scenes/GameScene';
 import { UIScene } from '../scenes/UIScene';
 import { ResultScene } from '../scenes/ResultScene';
-import { EditorScene } from '../scenes/EditorScene';
 export const gameConfig: Phaser.Types.Core.GameConfig = {
   type: Phaser.AUTO,
   parent: 'app',
   backgroundColor: '#9ed8ff',
   input: { activePointers: 4 },
+  loader: { maxParallelDownloads: 4, imageLoadType: 'XHR', timeout: 30000, maxRetries: 1 },
   physics: { default: 'arcade', arcade: { gravity: { x: 0, y: 0 }, debug: import.meta.env.DEV && new URLSearchParams(window.location.search).has('debug') } },
   // 画布始终等于设备视口（CSS 像素）；World 视野由 CameraManager 管理，UI 由 UILayout 管理。
   scale: {
@@ -19,5 +19,5 @@ export const gameConfig: Phaser.Types.Core.GameConfig = {
     autoRound: true,
   },
   render: { roundPixels: true, antialias: true },
-  scene: [BootScene, PreloadScene, StartScene, GameScene, UIScene, ResultScene, EditorScene],
+  scene: [BootScene, PreloadScene, StartScene, GameScene, UIScene, ResultScene],
 };

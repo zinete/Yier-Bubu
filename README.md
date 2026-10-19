@@ -7,6 +7,7 @@ pnpm install
 pnpm dev
 pnpm build
 pnpm preview
+pnpm verify
 ```
 
 ## 功能对应表
@@ -43,3 +44,12 @@ pnpm preview
 - 当前音频由 `GeneratedAudio` 生成 WAV 音乐与音效；后续可在 `PreloadScene` 替换为美术/音频团队提供的授权资源。
 - 自动检查：`pnpm test`、`pnpm lint`、`pnpm build`。交互验收见 `docs/迭代2与3验收记录.md`。
 - 触屏真机、完整两关通关与音频听感仍需按验收清单检查。
+
+## 0.1 公开试玩候选版
+
+版本 `0.1.0-preview.1`，目标桌面与手机共同支持，尚未公开部署或完成真机验收。
+
+- 开发状态与发布门槛：[0.1 开发与验收](docs/0.1公开试玩版开发与验收.md)。
+- 构建、反馈、部署回滚与设备检查：[发布操作与真机验收](docs/0.1发布操作与真机验收.md)。
+- 设置/暂停菜单提供本地反馈报告，不自动上传；工坊代码按需加载，必要图片加载失败可重试。
+- `pnpm verify` 完整检查；GitHub 工作流仅验证并保存构建包，不自动部署。

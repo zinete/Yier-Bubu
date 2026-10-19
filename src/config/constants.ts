@@ -1,4 +1,4 @@
-// 游戏设计坐标：World 相机保证 960x540 基准视野，宽屏仅增加横向可视范围。
+// 游戏设计坐标：World 相机至少保证 960x540 基准视野，宽屏增加横向、窄屏增加纵向范围。
 // Canvas 使用设备实际尺寸（RESIZE），UI 直接使用真实屏幕坐标（UILayout）。
 export const DESIGN_WIDTH = 960;
 export const DESIGN_HEIGHT = 540;

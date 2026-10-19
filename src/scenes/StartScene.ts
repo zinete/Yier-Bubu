@@ -12,6 +12,7 @@ import { ViewportManager } from '../systems/ViewportManager';
 import type { CharacterId } from '../types/game';
 import { levels } from '../levels';
 import { loadProgress } from '../systems/ProgressStore';
+import { openFeedback } from '../systems/ReleaseSupport';
 
 const WIDTH = 1920;
 const HEIGHT = 1080;
@@ -30,12 +31,18 @@ export class StartScene extends Phaser.Scene {
   private settingsModal!: Phaser.GameObjects.Container;
   private selectionTween?: Phaser.Tweens.Tween;
   private audioLabels: Phaser.GameObjects.Text[] = [];
+  private navigating = false;
+  private entryGeneration = 0;
+  private editorEntry!: Phaser.GameObjects.Text;
 
   constructor() {
     super(SCENE.START);
   }
 
   create(): void {
+    this.navigating = false;
+    this.entryGeneration += 1;
+    this.events.once(Phaser.Scenes.Events.SHUTDOWN, () => { this.entryGeneration += 1; });
     this.audioLabels = [];
     ViewportManager.attach(this, 0x9bd8ff, WIDTH, HEIGHT);
     this.selected = (this.registry.get(REGISTRY.CHARACTER) as CharacterId | undefined) ?? 'yier';
@@ -58,10 +65,10 @@ export class StartScene extends Phaser.Scene {
     this.createStartButton();
     this.createUtilityButtons();
     this.createSettingsModal();
-    this.add.text(WIDTH / 2, 975, '✦ 地图工坊 · 创建自己的冒险', {
+    this.editorEntry = this.add.text(WIDTH / 2, 975, '✦ 地图工坊 · 创建自己的冒险', {
       fontFamily: FONT, fontSize: '28px', color: '#416b59', backgroundColor: '#fff7e5', padding: { x: 24, y: 10 },
     }).setOrigin(0.5).setInteractive({ useHandCursor: true })
-      .on('pointerup', () => { if (!this.settingsModal.visible) this.scene.start(SCENE.EDITOR); });
+      .on('pointerup', () => { void this.openEditor(); });
     const progress = loadProgress();
     levels.forEach((level, index) => {
       const unlocked = progress.unlocked.includes(level.id);
@@ -247,9 +254,9 @@ export class StartScene extends Phaser.Scene {
         }
       }
     }
-    this.settingsModal.add(this.add.text(0, 145, 'M 音效 · N 音乐 · ← / → 音效音量 · ↑ / ↓ 音乐音量 · Esc 返回', {
-      fontFamily: FONT, fontSize: '18px', color: '#604320',
-    }).setOrigin(0.5));
+    this.settingsModal.add(this.add.text(0, 145, '0.1 试玩版 · 问题反馈与版本', {
+      fontFamily: FONT, fontSize: '24px', color: '#2776c9', padding: { x: 18, y: 10 },
+    }).setOrigin(0.5).setInteractive({ useHandCursor: true }).on('pointerup', openFeedback));
     this.renderAudioLabels();
   }
 
@@ -340,7 +347,8 @@ export class StartScene extends Phaser.Scene {
   }
 
   private startGame(levelId?: string): void {
-    if (this.settingsModal.visible) return;
+    if (this.settingsModal.visible || this.navigating) return;
+    this.navigating = true;
     this.registry.set(REGISTRY.CHARACTER, this.selected);
     try {
       localStorage.setItem(REGISTRY.CHARACTER, this.selected);
@@ -351,6 +359,25 @@ export class StartScene extends Phaser.Scene {
     this.scene.start(SCENE.GAME, {
       levelId: levelId ?? (progress.started ? progress.currentLevel : levels[0].id),
     });
+  }
+
+  private async openEditor(): Promise<void> {
+    if (this.settingsModal.visible || this.navigating) return;
+    this.navigating = true;
+    const generation = this.entryGeneration;
+    this.editorEntry.setText('正在打开地图工坊…');
+    try {
+      if (!this.scene.get(SCENE.EDITOR)) {
+        const { EditorScene } = await import('./EditorScene');
+        if (generation !== this.entryGeneration) return;
+        this.scene.add(SCENE.EDITOR, EditorScene, false);
+      }
+      if (generation === this.entryGeneration) this.scene.start(SCENE.EDITOR);
+    } catch {
+      if (generation !== this.entryGeneration) return;
+      this.navigating = false;
+      this.editorEntry.setText('工坊加载失败 · 点击重试，或刷新页面');
+    }
   }
 
   private nameStyle(color: string): Phaser.Types.GameObjects.Text.TextStyle {

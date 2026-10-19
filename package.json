@@ -1,14 +1,17 @@
 {
   "name": "yier-bubu",
   "private": true,
-  "version": "1.0.0",
+  "version": "0.1.0-preview.1",
+  "packageManager": "pnpm@12.5.1",
   "type": "module",
   "scripts": {
     "dev": "vite",
     "build": "tsc --noEmit && vite build",
     "preview": "vite preview",
     "lint": "eslint .",
-    "test": "node tests/progress.test.mjs && node tests/custom-map.test.mjs && node tests/asset-geometry.test.mjs && node tests/platform-physics.test.mjs && node tests/platform-material.test.mjs && node tests/editor-grid.test.mjs && node tests/scene-preview.test.mjs && node tests/editor-clipboard.test.mjs"
+    "verify": "pnpm lint && pnpm test && pnpm build && pnpm check:dist",
+    "check:dist": "node scripts/check-dist.mjs",
+    "test": "node tests/progress.test.mjs && node tests/progress-notice.test.mjs && node tests/player-flow.test.mjs && node tests/preload.test.mjs && node tests/release-support.test.mjs && node tests/custom-map.test.mjs && node tests/asset-geometry.test.mjs && node tests/platform-physics.test.mjs && node tests/platform-material.test.mjs && node tests/editor-grid.test.mjs && node tests/scene-preview.test.mjs && node tests/editor-clipboard.test.mjs && node tests/scene-layers.test.mjs && node tests/editor-draft.test.mjs && node tests/editor-viewport.test.mjs && node tests/editor-selection.test.mjs && node tests/editor-model.test.mjs && node tests/editor-workflow.test.mjs"
   },
   "dependencies": {
     "phaser": "3.90.0"
@@ -18,6 +21,7 @@
     "@types/node": "^24.6.0",
     "eslint": "^9.36.0",
     "eslint-config-prettier": "^10.1.8",
+    "jsdom": "^30.1.2",
     "prettier": "^3.6.2",
     "typescript": "^5.9.2",
     "typescript-eslint": "^8.44.0",

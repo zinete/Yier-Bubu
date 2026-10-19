@@ -7,15 +7,10 @@ import cardYierIdle from '../assets/start-screen/cards/card-yier-idle.png';
 import cardBubuIdle from '../assets/start-screen/cards/card-bubu-idle.png';
 import startButton from '../assets/start-screen/buttons/button-start.png';
 import secondaryButton from '../assets/start-screen/buttons/button-secondary.png';
-import startSoundOn from '../assets/start-screen/buttons/button-sound-on.png';
-import startSoundOff from '../assets/start-screen/buttons/button-sound-off.png';
-import settingsButton from '../assets/start-screen/buttons/button-settings.png';
 import selectedCheck from '../assets/start-screen/icons/selected-check.png';
 import doubleHeart from '../assets/start-screen/icons/double-heart.png';
-import daisy from '../assets/start-screen/icons/daisy.png';
 import yierThumb from '../assets/start-screen/characters/yier-thumb.png';
 import bubuThumb from '../assets/start-screen/characters/bubu-thumb.png';
-import hudPanel from '../assets/ui/hud-panel.png';
 import portraitFrame from '../assets/ui/portrait-frame.png';
 import iconHeartFull from '../assets/ui/icon-heart-full.png';
 import iconHeartEmpty from '../assets/ui/icon-heart-empty.png';
@@ -31,50 +26,58 @@ import buttonPause from '../assets/ui/button-pause.png';
 import buttonPlay from '../assets/ui/button-play.png';
 import { ViewportManager } from '../systems/ViewportManager';
 import { generatedAudio } from '../systems/GeneratedAudio';
+
+const IMAGES = [
+  ['start-background', startBackground], ['start-logo', gameLogo],
+  ['start-card-yier-idle', cardYierIdle], ['start-card-bubu-idle', cardBubuIdle],
+  ['start-button-primary', startButton], ['start-button-secondary', secondaryButton],
+  ['start-selected-check', selectedCheck], ['start-double-heart', doubleHeart],
+  ['start-yier-thumb', yierThumb], ['start-bubu-thumb', bubuThumb],
+  ['ui-portrait-frame', portraitFrame], ['ui-heart-full', iconHeartFull], ['ui-heart-empty', iconHeartEmpty],
+  ['ui-star', iconStar], ['ui-coin', iconCoin], ['ui-timer', iconTimer],
+  ['ui-joystick-idle', joystickIdle], ['ui-button-jump', buttonJump], ['ui-button-throw', buttonThrow],
+  ['ui-button-sound-on', buttonSoundOn], ['ui-button-sound-off', buttonSoundOff],
+  ['ui-button-pause', buttonPause], ['ui-button-play', buttonPlay],
+] as const;
+
 export class PreloadScene extends Phaser.Scene {
+  private label!: Phaser.GameObjects.Text;
+  private retryButton!: Phaser.GameObjects.Text;
+  private retrying = false;
   constructor() {
     super(SCENE.PRELOAD);
   }
   preload(): void {
-    for (const [key, url] of Object.entries(generatedAudio())) this.load.audio(key, url);
+    this.retrying = false;
     ViewportManager.attach(this);
-    const label = this.add
-      .text(480, 270, '正在加载冒险素材…', { fontSize: '22px', color: '#1d2b3a' })
+    this.label = this.add
+      .text(480, 240, '正在加载冒险素材…', { fontSize: '22px', color: '#1d2b3a', align: 'center', wordWrap: { width: 820 } })
       .setOrigin(0.5);
-    this.load.on(Phaser.Loader.Events.FILE_LOAD_ERROR, (file: Phaser.Loader.File) => {
-      label.setText(file.type === 'audio' ? '声音暂不可用，继续加载游戏…' : `资源加载失败：${file.key}`);
+    this.retryButton = this.add.text(480, 350, '重试加载 · Enter', {
+      fontSize: '24px', color: '#ffffff', backgroundColor: '#416b59', padding: { x: 24, y: 16 },
+    }).setOrigin(0.5).setVisible(false).setInteractive({ useHandCursor: true })
+      .on('pointerup', this.retry, this);
+    this.load.on(Phaser.Loader.Events.FILE_LOAD_ERROR, this.onFileError, this);
+    this.load.on(Phaser.Loader.Events.PROGRESS, this.onProgress, this);
+    this.input.keyboard?.on('keydown-ENTER', this.retry, this);
+    this.events.once(Phaser.Scenes.Events.SHUTDOWN, () => {
+      this.load.off(Phaser.Loader.Events.FILE_LOAD_ERROR, this.onFileError, this);
+      this.load.off(Phaser.Loader.Events.PROGRESS, this.onProgress, this);
+      this.input.keyboard?.off('keydown-ENTER', this.retry, this);
     });
-    this.load.spritesheet('characters', characterSheet, { frameWidth: 128, frameHeight: 142 });
-    this.load.image('start-background', startBackground);
-    this.load.image('start-logo', gameLogo);
-    this.load.image('start-card-yier-idle', cardYierIdle);
-    this.load.image('start-card-bubu-idle', cardBubuIdle);
-    this.load.image('start-button-primary', startButton);
-    this.load.image('start-button-secondary', secondaryButton);
-    this.load.image('start-button-sound-on', startSoundOn);
-    this.load.image('start-button-sound-off', startSoundOff);
-    this.load.image('start-button-settings', settingsButton);
-    this.load.image('start-selected-check', selectedCheck);
-    this.load.image('start-double-heart', doubleHeart);
-    this.load.image('start-daisy', daisy);
-    this.load.image('start-yier-thumb', yierThumb);
-    this.load.image('start-bubu-thumb', bubuThumb);
-    this.load.image('ui-hud-panel', hudPanel);
-    this.load.image('ui-portrait-frame', portraitFrame);
-    this.load.image('ui-heart-full', iconHeartFull);
-    this.load.image('ui-heart-empty', iconHeartEmpty);
-    this.load.image('ui-star', iconStar);
-    this.load.image('ui-coin', iconCoin);
-    this.load.image('ui-timer', iconTimer);
-    this.load.image('ui-joystick-idle', joystickIdle);
-    this.load.image('ui-button-jump', buttonJump);
-    this.load.image('ui-button-throw', buttonThrow);
-    this.load.image('ui-button-sound-on', buttonSoundOn);
-    this.load.image('ui-button-sound-off', buttonSoundOff);
-    this.load.image('ui-button-pause', buttonPause);
-    this.load.image('ui-button-play', buttonPlay);
+    for (const [key, url] of Object.entries(generatedAudio()))
+      if (!this.cache.audio.exists(key)) this.load.audio(key, url);
+    if (!this.textures.exists('characters'))
+      this.load.spritesheet('characters', characterSheet, { frameWidth: 128, frameHeight: 142 });
+    for (const [key, url] of IMAGES) if (!this.textures.exists(key)) this.load.image(key, url);
   }
   create(): void {
+    const missing = ['characters', ...IMAGES.map(([key]) => key)].filter((key) => !this.textures.exists(key));
+    if (missing.length) {
+      this.label.setText(`有 ${missing.length} 项必要素材未能加载。\n请检查网络后重试；已加载的素材不会重复下载。\n${missing.slice(0, 3).join('、')}`);
+      this.retryButton.setVisible(true);
+      return;
+    }
     this.makeTextures();
     this.trimStartCardTextures();
     const frames = {
@@ -99,6 +102,16 @@ export class PreloadScene extends Phaser.Scene {
           });
       }
     this.scene.start(SCENE.START);
+  }
+  private onFileError(file: Phaser.Loader.File): void {
+    this.label.setText(file.type === 'audio' ? '声音暂不可用，继续加载游戏…' : `资源加载失败：${file.key}，加载结束后可重试`);
+  }
+  private onProgress(progress: number): void { this.label.setText(`正在加载冒险素材… ${Math.round(progress * 100)}%`); }
+  private retry(event?: KeyboardEvent): void {
+    if (this.retrying || !this.retryButton.visible || event?.repeat) return;
+    this.retrying = true;
+    this.retryButton.setVisible(false);
+    this.scene.restart();
   }
   private makeTextures(): void {
     const graphics = this.make.graphics({ x: 0, y: 0 });

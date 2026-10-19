@@ -3,6 +3,7 @@ import { readFileSync } from 'node:fs';
 import vm from 'node:vm';
 import ts from 'typescript';
 import process from 'node:process';
+import { editorDocument, editorHistory } from './helpers/editor-model.mjs';
 function load(path, require = () => ({}), globals = {}) {
   const module = { exports: {} };
   vm.runInNewContext(ts.transpileModule(readFileSync(path, 'utf8'), {
@@ -32,6 +33,8 @@ const library = (map) => map.assets ?? [];
 let assetMeasurements;
 const { EditorScene } = load('src/scenes/EditorScene.ts', (name) => {
   if (name === 'phaser') return { default: { Scene: class {} } };
+  if (name.endsWith('/EditorDocument')) return editorDocument;
+  if (name.endsWith('/EditorHistory')) return editorHistory;
   if (name.endsWith('/SceneBackdrop')) return backdrop;
   if (name.endsWith('/CustomMap')) return mapModule;
   if (name.endsWith('/DefaultAssets')) return { mapAssets: library };
@@ -66,7 +69,7 @@ scene.root = { isConnected: true, querySelector: (selector) => fields[selector] 
   '[data-parallax-slider]': slider, '.scene-preview-status': status,
   '[data-action="undo"]': undoButton, '[data-action="redo"]': redoButton })[selector] };
 scene.message = (text) => { scene.lastMessage = text; };
-scene.render = () => { renders += 1; scene.renderSceneControls(); scene.renderSceneBackground(); };
+scene.render = () => { scene.commitHistory(); renders += 1; scene.renderSceneControls(); scene.renderSceneBackground(); };
 scene.save = () => { saved = JSON.stringify(scene.map); return true; };
 const objectsBefore = JSON.stringify(scene.map.level);
 fields['[data-scene="theme"]'].value = 'snow';

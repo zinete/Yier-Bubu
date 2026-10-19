@@ -46,6 +46,68 @@ canvas {
   image-rendering: auto;
 }
 
+.progress-notice {
+  position: fixed;
+  top: calc(var(--safe-top) + 10px);
+  right: calc(var(--safe-right) + 10px);
+  z-index: 10000;
+  width: min(360px, calc(100vw - var(--safe-left) - var(--safe-right) - 20px));
+  max-height: calc(100dvh - var(--safe-top) - var(--safe-bottom) - 20px);
+  overflow: auto;
+  padding: 14px;
+  border: 2px solid #d3bc8b;
+  border-radius: 16px;
+  background: #fff7e5;
+  box-shadow: 0 6px 24px #263b5033;
+  color: #604b32;
+  font-size: 14px;
+  touch-action: pan-y;
+}
+.progress-notice[hidden] { display: none; }
+.progress-notice p { margin: 0 0 8px; line-height: 1.5; }
+.progress-notice button {
+  min-height: 44px;
+  margin-right: 8px;
+  padding: 8px 14px;
+  border: 1px solid #416b59;
+  border-radius: 10px;
+  background: #fff;
+  color: #416b59;
+  font: inherit;
+  cursor: pointer;
+  touch-action: manipulation;
+}
+.progress-notice button:focus-visible { outline: 3px solid #2f80ed; outline-offset: 2px; }
+
+.release-support {
+  width: min(560px, calc(100vw - 32px));
+  max-height: calc(100dvh - var(--safe-top) - var(--safe-bottom) - 24px);
+  overflow: auto;
+  border: 2px solid #d3bc8b;
+  border-radius: 18px;
+  background: #fff7e5;
+  color: #405448;
+  padding: 20px;
+  touch-action: pan-y;
+  font-size: 15px;
+}
+.release-support::backdrop { background: #1d2b3ab3; }
+.release-support h2 { margin: 0 0 12px; }
+.release-support p { line-height: 1.5; }
+.release-support label { display: block; margin: 12px 0; }
+.release-support textarea {
+  display: block; width: 100%; margin-top: 6px; padding: 10px;
+  border: 1px solid #9ab497; border-radius: 8px;
+  font: inherit; font-size: 16px; user-select: text; touch-action: auto;
+}
+.release-support .privacy-note { font-size: 13px; color: #647963; }
+.release-support button {
+  min-height: 44px; padding: 10px 16px; margin: 4px 8px 0 0;
+  border: 1px solid #416b59; border-radius: 10px; background: #416b59; color: #fff;
+  font: inherit; cursor: pointer; touch-action: manipulation;
+}
+.release-support :focus-visible { outline: 3px solid #2f80ed; outline-offset: 2px; }
+
 @media (orientation: portrait) and (pointer: coarse) {
   #app::after {
     content: '请旋转设备至横屏游玩';

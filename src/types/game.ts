@@ -1,6 +1,7 @@
 export type CharacterId = 'yier' | 'bubu';
 export type GameStatus = 'playing' | 'paused' | 'won' | 'lost';
 export interface PlatformData {
+  objectId?: string;
   assetId?: string;
   id: string;
   x: number;
@@ -10,6 +11,7 @@ export interface PlatformData {
   kind: 'ground' | 'platform';
 }
 export interface EnemyData {
+  objectId?: string;
   assetId?: string;
   x: number;
   y: number;
@@ -27,6 +29,7 @@ export interface EnemyAttackData {
   projectileLifetime: number;
 }
 export interface Point {
+  objectId?: string;
   assetId?: string;
   x: number;
   y: number;
@@ -37,7 +40,7 @@ export interface LevelData {
   timeLimit: number;
   spawn: Point;
   checkpoint: Point;
-  flag: { x: number; y: number; width: number; height: number; assetId?: string };
+  flag: { x: number; y: number; width: number; height: number; assetId?: string; objectId?: string };
   platforms: PlatformData[];
   coins: Array<Point | [number, number]>;
   enemies: EnemyData[];
