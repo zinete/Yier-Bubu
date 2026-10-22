@@ -40,4 +40,5 @@ export const SCENE = {
   UI: 'UIScene',
   RESULT: 'ResultScene',
   EDITOR: 'EditorScene',
+  COOP: 'CoopScene',
 } as const;

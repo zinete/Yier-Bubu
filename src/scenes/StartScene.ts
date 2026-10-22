@@ -35,6 +35,7 @@ export class StartScene extends Phaser.Scene {
   private navigating = false;
   private entryGeneration = 0;
   private editorEntry!: Phaser.GameObjects.Text;
+  private coopEntry!: Phaser.GameObjects.Text;
 
   constructor() {
     super(SCENE.START);
@@ -71,6 +72,10 @@ export class StartScene extends Phaser.Scene {
     }).setOrigin(0.5).setResolution(TEXT_RESOLUTION));
     awakening.setSize(300, 150).setInteractive(new Phaser.Geom.Rectangle(-150, -75, 300, 150), Phaser.Geom.Rectangle.Contains)
       .on('pointerup', () => this.startAwakeningDemo());
+    this.coopEntry = this.add.text(1540, 865, '同机双人\n一起出发 · C', {
+      fontFamily: FONT, fontSize: '38px', fontStyle: 'bold', color: '#416b59',
+      backgroundColor: '#fff7e5', align: 'center', padding: { x: 30, y: 22 },
+    }).setOrigin(0.5).setInteractive({ useHandCursor: true }).on('pointerup', () => { void this.openCoop(); });
     this.createUtilityButtons();
     this.createSettingsModal();
     this.editorEntry = this.add.text(WIDTH / 2, 975, '✦ 地图工坊 · 创建自己的冒险', {
@@ -291,8 +296,8 @@ export class StartScene extends Phaser.Scene {
     this.input.keyboard?.on('keydown-A', () => this.selectCharacter('yier'));
     this.input.keyboard?.on('keydown-RIGHT', () => this.settingsModal.visible ? this.changeAudio('soundVolume', 0.1) : this.selectCharacter('bubu'));
     this.input.keyboard?.on('keydown-D', () => this.selectCharacter('bubu'));
-    this.input.keyboard?.on('keydown-ENTER', () => {
-      if (!this.settingsModal.visible) this.startGame();
+    this.input.keyboard?.on('keydown-ENTER', (event: KeyboardEvent) => {
+      if (!event.repeat && !this.settingsModal.visible) this.startGame();
     });
     this.input.keyboard?.on('keydown-ESC', () => this.setSettingsVisible(false));
     this.input.keyboard?.on('keydown-S', () => this.setSettingsVisible(!this.settingsModal.visible));
@@ -305,6 +310,7 @@ export class StartScene extends Phaser.Scene {
       if (loadProgress().unlocked.includes(levels[1].id)) this.startGame(levels[1].id);
     });
     this.input.keyboard?.on('keydown-THREE', () => this.startAwakeningDemo());
+    this.input.keyboard?.on('keydown-C', () => { void this.openCoop(); });
     this.events.once(Phaser.Scenes.Events.SHUTDOWN, () => this.input.keyboard?.removeAllListeners());
   }
 
@@ -396,6 +402,23 @@ export class StartScene extends Phaser.Scene {
     this.navigating = true;
     this.registry.set(REGISTRY.CHARACTER, this.selected);
     this.scene.start(SCENE.GAME, { demo: true });
+  }
+  private async openCoop(): Promise<void> {
+    if (this.settingsModal.visible || this.navigating) return;
+    this.navigating = true;
+    const generation = this.entryGeneration;
+    this.coopEntry.setText('正在打开\n双人冒险…');
+    try {
+      if (!this.scene.get(SCENE.COOP)) {
+        const { CoopScene } = await import('./CoopScene');
+        if (generation !== this.entryGeneration) return;
+        this.scene.add(SCENE.COOP, CoopScene, false);
+      }
+      if (generation === this.entryGeneration) this.scene.start(SCENE.COOP);
+    } catch {
+      if (generation !== this.entryGeneration) return;
+      this.navigating = false; this.coopEntry.setText('加载失败\n点击重试');
+    }
   }
 
   private nameStyle(color: string): Phaser.Types.GameObjects.Text.TextStyle {

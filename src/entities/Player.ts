@@ -3,6 +3,7 @@ import { PLAYER } from '../config/constants';
 import type { CharacterId } from '../types/game';
 import type { InputManager } from '../systems/InputManager';
 import { characterBodyBounds } from '../systems/CharacterBody';
+import type { MovementCommand, PlayerId } from '../types/commands';
 export class Player extends Phaser.Physics.Arcade.Sprite {
   readonly character: CharacterId;
   private coyoteUntil = 0;
@@ -10,7 +11,7 @@ export class Player extends Phaser.Physics.Arcade.Sprite {
   private facing = 1;
   private hurtUntil = 0;
   private lastAnimation = '';
-  constructor(scene: Phaser.Scene, x: number, y: number, character: CharacterId) {
+  constructor(scene: Phaser.Scene, x: number, y: number, character: CharacterId, readonly playerId: PlayerId | 'solo' = 'solo') {
     super(scene, x, y, 'characters', 0);
     this.character = character;
     scene.add.existing(this);
@@ -24,17 +25,26 @@ export class Player extends Phaser.Physics.Arcade.Sprite {
     this.playAnimation('idle');
   }
   updatePlayer(time: number, input: InputManager): void {
+    this.applyCommand(time, {
+      moveX: Number(input.down('right')) - Number(input.down('left')),
+      jumpPressed: input.consumeJump(), jumpHeld: input.down('jump'),
+    });
+  }
+  /** Shared movement implementation; input sources never know physics or key bindings here. */
+  applyCommand(time: number, command: MovementCommand): boolean {
     const body = this.arcadeBody;
+    let jumped = false;
     const wasGrounded = body.blocked.down || body.touching.down;
     if (wasGrounded) this.coyoteUntil = time + PLAYER.COYOTE_TIME;
-    if (input.consumeJump()) this.bufferedJumpUntil = time + PLAYER.JUMP_BUFFER_TIME;
+    if (command.jumpPressed) this.bufferedJumpUntil = time + PLAYER.JUMP_BUFFER_TIME;
     if (this.bufferedJumpUntil >= time && (wasGrounded || this.coyoteUntil >= time)) {
       body.setVelocityY(PLAYER.JUMP_VELOCITY);
       this.scene.game.events.emit('player-jump');
       this.bufferedJumpUntil = 0;
       this.coyoteUntil = 0;
+      jumped = true;
     }
-    const direction = Number(input.down('right')) - Number(input.down('left'));
+    const direction = Math.max(-1, Math.min(1, command.moveX));
     body.setAccelerationX(
       direction * (wasGrounded ? PLAYER.GROUND_ACCELERATION : PLAYER.AIR_ACCELERATION),
     );
@@ -43,10 +53,20 @@ export class Player extends Phaser.Physics.Arcade.Sprite {
       this.facing = direction;
       this.setFlipX(direction < 0);
     }
-    if (!input.down('jump') && body.velocity.y < 0)
+    if (!command.jumpHeld && body.velocity.y < 0)
       body.setVelocityY(Math.max(body.velocity.y * PLAYER.JUMP_CUT_MULTIPLIER, -220));
     body.setGravityY(body.velocity.y > 0 ? PLAYER.FALL_GRAVITY : PLAYER.NORMAL_GRAVITY);
     this.playStateAnimation(time);
+    return jumped;
+  }
+  get characterId(): CharacterId { return this.character; }
+  clearJumpMemory(): void { this.coyoteUntil = this.bufferedJumpUntil = -Infinity; }
+  resetAt(x: number, y: number): void {
+    this.clearJumpMemory(); this.hurtUntil = 0;
+    this.arcadeBody.reset(x, y); this.arcadeBody.stop();
+    this.setGravityY(PLAYER.NORMAL_GRAVITY).setAlpha(1).setVisible(true).clearTint();
+    this.arcadeBody.enable = true;
+    this.playAnimation('idle');
   }
   hurt(time: number, sourceX: number): boolean {
     if (this.isInvulnerable(time)) return false;

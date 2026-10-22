@@ -1,21 +1,15 @@
-import Phaser from 'phaser';
-import { gameConfig } from './config/gameConfig';
-import { mountProgressNotice } from './systems/ProgressNotice';
-import { mountReleaseSupport } from './systems/ReleaseSupport';
-import { mountEffectPanel } from './systems/EffectPanel';
-import type { HudState } from './types/game';
-import { REGISTRY, SCENE } from './config/constants';
+import { desktopAllowed, showDesktopRequired } from './systems/DesktopGate';
 import './style.css';
-const disposeNotice = mountProgressNotice();
-const game = new Phaser.Game(gameConfig);
-let keyboardEnabled = true;
-const pauseForPanel = () => {
-  game.events.emit('blur');
-  if (game.input.keyboard) { keyboardEnabled = game.input.keyboard.enabled; game.input.keyboard.enabled = false; }
-};
-const closePanel = () => { if (game.input.keyboard) game.input.keyboard.enabled = keyboardEnabled; };
-const disposeSupport = mountReleaseSupport(__BUILD_INFO__, () => game.scene.isActive(SCENE.GAME)
-  ? (game.registry.get('hud') as HudState | undefined) ?? {}
-  : { character: game.registry.get(REGISTRY.CHARACTER) }, pauseForPanel, closePanel);
-const disposeEffects = mountEffectPanel(pauseForPanel, closePanel);
-import.meta.hot?.dispose(() => { disposeNotice(); disposeSupport(); disposeEffects(); game.destroy(true); });
+const root = document.getElementById('app')!;
+let disposed = false;
+let dispose: (() => void) | undefined;
+if (!desktopAllowed()) showDesktopRequired(root);
+else {
+  root.textContent = '正在打开冒险…';
+  void import('./GameApp').then(({ bootGame }) => {
+    if (!disposed) { root.replaceChildren(); dispose = bootGame(); }
+  }).catch(() => {
+    if (!disposed) root.textContent = '游戏加载失败，请刷新页面重试。';
+  });
+}
+import.meta.hot?.dispose(() => { disposed = true; dispose?.(); });

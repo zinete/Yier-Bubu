@@ -1,0 +1,35 @@
+.coop-overlay { position: absolute; inset: 0; z-index: 30; pointer-events: none; color: #365446; outline: none; }
+.coop-panel { background: #fff9eaf5; border: 2px solid #d7c393; border-radius: 20px; box-shadow: 0 6px 22px #294f3b25; padding: 20px; }
+.coop-overlay:not([data-phase="playing"]) { display: grid; place-items: center; padding: 14px; background: #294f3b70; pointer-events: auto; }
+.coop-overlay:not([data-phase="playing"]) .coop-panel { width: min(720px, 100%); max-height: 100%; overflow: auto; text-align: center; }
+.coop-panel h1 { margin: 0 0 14px; font-size: clamp(20px, 3vw, 30px); }
+.coop-cards { display: grid; grid-template-columns: 1fr 1fr; gap: 16px; }
+.coop-cards article { padding: 14px; background: #e4f4f8; border-radius: 16px; border: 2px solid #a5d6e5; }
+.coop-cards article + article { background: #fff0d6; border-color: #e8c183; }
+.coop-cards img { width: 90px; height: 90px; object-fit: contain; }
+.coop-cards h2 { margin: 6px; font-size: 20px; }
+.coop-cards p { line-height: 1.8; margin: 8px 0; }
+.coop-cards strong { display: block; padding: 10px; background: #ffffffbb; border-radius: 12px; }
+.coop-panel button { min-height: 42px; border: 1px solid #416b59; border-radius: 12px; padding: 9px 16px; background: #416b59; color: #fff8df; font: inherit; cursor: pointer; pointer-events: auto; }
+.coop-panel button:focus-visible { outline: 3px solid #e5ac3d; outline-offset: 3px; }
+.coop-panel nav { display: flex; gap: 10px; justify-content: center; flex-wrap: wrap; margin-top: 14px; }
+.coop-status { font-weight: 700; line-height: 1.5; margin: 10px 0 6px; }
+.coop-hint { line-height: 1.5; margin: 6px 0; font-size: 14px; color: #5b6e60; white-space: pre-line; }
+.coop-player-status { font-size: 14px; line-height: 1.5; color: #4b6375; }
+.coop-overlay [hidden] { display: none !important; }
+.coop-overlay[data-phase="playing"] .coop-panel { margin: 10px auto; width: min(760px, calc(100% - 24px)); padding: 10px 16px; display: grid; grid-template-columns: 1fr auto; gap: 2px 12px; }
+.coop-overlay[data-phase="playing"] h1 { font-size: 16px; margin: 0; }
+.coop-overlay[data-phase="playing"] nav { grid-column: 2; grid-row: 1 / 5; margin: 0; align-content: center; max-width: 110px; }
+.coop-overlay[data-phase="playing"] .coop-status, .coop-overlay[data-phase="playing"] .coop-hint { margin: 1px 0; font-size: 13px; }
+.coop-overlay[data-phase="playing"] .coop-player-status { font-size: 12px; }
+@media (max-width: 560px), (max-height: 420px) {
+  .coop-panel { padding: 12px; }
+  .coop-cards { gap: 8px; }
+  .coop-cards article { padding: 8px; }
+  .coop-cards img { width: 48px; height: 48px; }
+  .coop-cards p { font-size: 13px; }
+  .coop-panel h1 { font-size: 20px; margin-bottom: 8px; }
+  .coop-overlay[data-phase="playing"] .coop-panel { margin-top: 4px; padding: 6px 10px; gap: 1px 6px; }
+  .coop-overlay[data-phase="playing"] nav { max-width: 90px; }
+  .coop-panel button { padding: 6px 10px; font-size: 12px; }
+}
