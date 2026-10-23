@@ -3,13 +3,14 @@ import type { LevelData, PlatformData } from '../types/game';
 import type { Projectile } from '../entities/Projectile';
 import type { SkillEffects } from './SkillEffects';
 import { AwakeningController, budPosition } from './AwakeningController';
+import type { PlatformArtHandle } from './ViewportArt';
 
 interface NodeView {
   platform: PlatformData; body: Phaser.Physics.Arcade.StaticBody;
   bud: Phaser.Physics.Arcade.Image; label: Phaser.GameObjects.Text;
   sleeping: Phaser.GameObjects.Graphics; awake: Phaser.GameObjects.Graphics;
   active: boolean; text: string;
-  skin: Phaser.GameObjects.Image[];
+  skin: PlatformArtHandle[];
 }
 /** All essential shapes/text work without a shader, including the expiry warning. */
 export class AwakeningWorld {
@@ -21,7 +22,7 @@ export class AwakeningWorld {
   constructor(scene: Phaser.Scene, level: LevelData, bodies: Map<string, Phaser.Physics.Arcade.Image>,
     projectiles: Phaser.Physics.Arcade.Group, effects: SkillEffects,
     playing: () => boolean, clock: () => number, onActivate: (x: number, y: number) => void,
-    platformArt: (platform: PlatformData) => Phaser.GameObjects.Image[] = () => []) {
+    platformArt: (platform: PlatformData) => PlatformArtHandle[] = () => []) {
     this.controller = new AwakeningController(level.platforms, level.awakeningGoal);
     this.buds = scene.physics.add.staticGroup();
     for (const platform of level.platforms) {

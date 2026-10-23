@@ -69,8 +69,9 @@ function setup(storage = new Storage(), observeResize = false) {
     if (name.endsWith('/SceneBackdrop')) return backdrop;
     if (name.endsWith('/SceneLayers')) return sceneLayers;
     if (name.endsWith('/PlatformMaterial')) return materials;
-    if (name.endsWith('/DefaultAssets')) return { DEFAULT_ASSETS: library, DEFAULT_OBJECT_SKINS: skins, mapAssets: (map) => [...library, ...(map.assets ?? [])] };
-    if (name.endsWith('/AssetGeometry')) return { ensureAssetGeometry() {},
+    if (name.endsWith('/SvgAssetLibrary')) return load('src/systems/SvgAssetLibrary.ts');
+    if (name.endsWith('/DefaultAssets')) return { DEFAULT_ASSETS: library, DEFAULT_OBJECT_SKINS: skins, mapAssets: (map) => [...library, ...(map.assets ?? [])], runtimeMapAssets: (map) => [...library, ...(map.assets ?? [])] };
+    if (name.endsWith('/AssetGeometry')) return { ensureAssetGeometry() { return () => {}; },
       cachedAssetGeometry: () => ({ sourceWidth: 512, sourceHeight: 256, x: 0, y: 0, width: 512, height: 256, surfaceY: 100 }),
       assetLayout: (_, x, y, width, height) => ({ x, y, width, height }) };
     return {};
@@ -648,3 +649,30 @@ assert.equal(flowerScene.object().awakening.budOffsetX, initialFlower.awakening.
 flowers.click('undo'); assert.equal(JSON.stringify(flowerScene.map), flowerSnapshot);
 flowers.close();
 log('Awakening editor DOM tests passed (continuous placement, fields, validation, copy, history, drag, save/export and goal lock)');
+
+// A large legal upload referenced hundreds of times must only occur once in the canvas DOM.
+const shared = setup();
+const sharedSource = 'data:image/png;base64,' + 'A'.repeat(320000);
+shared.scene.map.assets = [{ id: 'shared-upload', name: '共享星光', data: sharedSource, width: 256, height: 256 }];
+shared.scene.map.level.coins = Array.from({ length: 300 }, (_, i) => ({ x: 100 + i * 16, y: 320, assetId: 'shared-upload' }));
+shared.scene.map.level.platforms[0].assetId = 'shared-upload';
+shared.scene.map.decorations = [{ x: 20, y: 20, width: 48, height: 48, assetId: 'shared-upload' }];
+shared.scene.map.scene = { theme: 'forest', backgroundMode: 'repeat', backgroundAssetId: 'shared-upload', parallax: .2,
+  layers: [{ id: 'shared-layer', name: '共享前景', assetId: 'shared-upload', x: 0, y: 0, width: 320, height: 320,
+    opacity: .5, visible: true, group: 'foreground', mode: 'repeat', parallax: .5, locked: false }] };
+shared.scene.renderCanvas();
+const sharedSvg = shared.document.querySelector('svg');
+const checkShared = () => {
+  assert.equal(sharedSvg.innerHTML.split(sharedSource).length - 1, 1, '对象、平台、背景、图层仅内嵌一次原图');
+  assert.ok(sharedSvg.innerHTML.length < 650000, '300 次引用不再膨胀到约 96MB');
+  for (const use of sharedSvg.querySelectorAll('use')) assert.ok(sharedSvg.querySelector(use.getAttribute('href')), '引用必须解析到同一 SVG 的图片定义');
+};
+checkShared();
+shared.scene.tool = 'coin'; shared.scene.assetId = 'shared-upload'; shared.scene.preview = { x: 800, y: 320 };
+for (let i = 0; i < 10; i++) shared.scene.drawPreview();
+checkShared();
+shared.scene.tool = 'select'; shared.scene.selected = { kind: 'platform', index: 0 };
+shared.scene.drag = { resize: true, width: 100, height: 32, x: 0, y: 0 };
+shared.scene.renderDrag(); checkShared(); shared.scene.drag = undefined;
+log(`Editor shared images: 300 stars + platform/background/layer/preview = ${sharedSvg.innerHTML.length} SVG chars`);
+shared.close();

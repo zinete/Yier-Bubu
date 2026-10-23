@@ -64,7 +64,7 @@ const background = { get innerHTML() { return markup; }, set innerHTML(value) {
 const workspace = { scrollLeft: 0, scrollWidth: 1960, clientWidth: 960,
   getBoundingClientRect: () => ({ left: 100 }), scrollTo(options) { this.scrollLeft = options.left; this.behavior = options.behavior; } };
 const svg = { style: {}, getBoundingClientRect: () => ({ left: 120 - workspace.scrollLeft, width: 960 }),
-  querySelector: () => background, querySelectorAll: () => layers };
+  querySelector: (selector) => selector === '[data-scene-background]' ? background : undefined, querySelectorAll: () => layers };
 scene.root = { isConnected: true, querySelector: (selector) => fields[selector] ?? ({ svg, '.workspace': workspace,
   '[data-parallax-slider]': slider, '.scene-preview-status': status,
   '[data-action="undo"]': undoButton, '[data-action="redo"]': redoButton })[selector] };
@@ -145,34 +145,38 @@ const { GameScene } = load('src/scenes/GameScene.ts', (name) => {
   if (name === 'phaser') return { default: { Scene: class {} } };
   if (name.endsWith('/DefaultAssets')) return { mapAssets: library };
   if (name.endsWith('/ForestArt')) return { buildForest() {} };
+  if (name.endsWith('/SceneLayers')) return load('src/systems/SceneLayers.ts');
+  if (name.endsWith('/ViewportArt')) return { ViewportPlatformRenderer: class { add() {} sync() {} } };
   return {};
 });
 const game = Object.create(GameScene.prototype);
 let tileScale;
 const image = { setOrigin() { return this; }, setDepth() { return this; }, setScrollFactor() { return this; },
-  setTileScale(value) { tileScale = value; return this; } };
+  setTileScale(value) { tileScale = value; return this; }, setAlpha() { return this; }, setPosition() { return this; }, setSize() { return this; }, setTilePosition() { return this; } };
 Object.assign(game, { customMap: scene.map, level: scene.map.level,
   customTextures: new Map([['bg', 'bg-key']]),
-  textures: { exists: () => true, get: () => ({ get: () => ({ cutHeight: 1024 }) }) },
-  add: { tileSprite: () => image }, drawObjectSkin() {},
+  cameras: { main: { scrollX: 0, width: 960, zoom: 1, worldView: { x: 0 }, on() {}, off() {} } }, events: { on() {}, once() {} },
+  textures: { exists: () => true, get: () => ({ get: () => ({ cutWidth: 1024, cutHeight: 1024 }) }) },
+  add: { tileSprite: () => image }, skinKey() {}, drawObjectSkin() {},
 });
 game.createBackground();
 assert.equal(tileScale, 540 / 1024, '试玩平铺也应以真实原图高度适配');
 
 // 试玩也消费同一图层数据，主题视差不再仅对自定义背景生效。
-const { buildForest } = load('src/systems/ForestArt.ts', () => backdrop);
+const viewportArt = load('src/systems/ViewportArt.ts');
+const { buildForest } = load('src/systems/ForestArt.ts', (name) => name.endsWith('/ViewportArt') ? viewportArt : backdrop);
 for (const theme of Object.keys(SCENE_PALETTES)) {
   const graphics = [];
   const chain = () => {
     const obj = {};
-    for (const method of ['setOrigin', 'setDisplaySize', 'setDepth', 'fillStyle', 'fillCircle', 'fillEllipse', 'fillRoundedRect', 'lineStyle', 'lineBetween', 'strokeRoundedRect']) obj[method] = () => obj;
+    for (const method of ['clear', 'setOrigin', 'setDisplaySize', 'setDepth', 'fillStyle', 'fillCircle', 'fillEllipse', 'fillRoundedRect', 'lineStyle', 'lineBetween', 'strokeRoundedRect']) obj[method] = () => obj;
     obj.setScrollFactor = (value) => { obj.scrollFactor = value; return obj; };
     return obj;
   };
-  const mock = { textures: { exists: () => true }, add: { image: chain, text: chain,
+  const mock = { cameras: { main: { scrollX: 0, width: 960, zoom: 1, on() {}, off() {} } }, events: { on() {}, once() {}, off() {} }, textures: { exists: () => true }, add: { image: chain, text: chain,
     graphics: () => { const obj = chain(); graphics.push(obj); return obj; } } };
   buildForest(mock, { id: 'custom', width: 1920, platforms: [] }, '预览', theme, false, 0.7);
-  const actualFactors = graphics.filter((g) => g.scrollFactor !== undefined).map((g) => g.scrollFactor);
+  const actualFactors = graphics.filter((g) => g.scrollFactor !== undefined).slice(0, -1).map((g) => g.scrollFactor);
   assert.equal(JSON.stringify(actualFactors), JSON.stringify(backdropLayers(theme, 0.7).map((l) => l.parallax)));
 }
 if (process.argv.includes('--preview')) process.stdout.write(JSON.stringify(Object.keys(SCENE_PALETTES).map((theme) =>

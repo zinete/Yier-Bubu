@@ -1,5 +1,6 @@
 export interface BuildInfo { version: string; revision: string; builtAt: string; channel: string }
-interface PlayerContext { levelId?: string; character?: string; health?: number; seconds?: number; customMap?: boolean }
+interface PlayerContext { levelId?: string; character?: string; health?: number; seconds?: number; customMap?: boolean;
+  mode?: 'local-coop'; phase?: string; checkpointActive?: boolean }
 let openPanel: (() => void) | undefined;
 export function openFeedback(): void { openPanel?.(); }
 
@@ -9,8 +10,11 @@ export function feedbackReport(info: BuildInfo, context: PlayerContext, descript
     build: info, description: description.slice(0, 2000),
     device: { browser: navigator.userAgent.slice(0, 200), viewport: [window.innerWidth, window.innerHeight], pixelRatio: window.devicePixelRatio },
     game: {
-      level: context.customMap ? 'custom' : ['1-1', '1-2', 'awakening-demo'].includes(context.levelId ?? '') ? context.levelId : 'menu',
-      character: context.character === 'bubu' ? 'bubu' : 'yier',
+      level: context.customMap ? 'custom' : ['1-1', '1-2', 'awakening-demo', 'coop-tutorial'].includes(context.levelId ?? '') ? context.levelId : 'menu',
+      character: context.mode === 'local-coop' ? 'yier+bubu' : context.character === 'bubu' ? 'bubu' : 'yier',
+      mode: context.mode === 'local-coop' ? 'local-coop' : undefined,
+      phase: context.mode === 'local-coop' && ['ready', 'playing', 'paused', 'won'].includes(context.phase ?? '') ? context.phase : undefined,
+      checkpointActive: context.mode === 'local-coop' ? context.checkpointActive === true : undefined,
       health: Number.isFinite(context.health) ? context.health : undefined,
       seconds: Number.isFinite(context.seconds) ? context.seconds : undefined,
     },

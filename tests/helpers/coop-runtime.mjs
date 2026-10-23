@@ -40,6 +40,8 @@ class Visual extends Events {
 }
 class Audio {
   sounds = [];
+  preferences = { sound: true, music: true, soundVolume: .6, musicVolume: .35 };
+  setPreferences(value) { this.preferences = value; }
   play(key) { this.sounds.push(key); } playMusic() {} setMusicPaused(v) { this.paused = v; }
 }
 export function coopRuntime() {

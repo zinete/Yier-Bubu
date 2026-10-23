@@ -100,18 +100,18 @@ export class ResultScene extends Phaser.Scene {
       this.navigate(pointer.worldX < 480 ? SCENE.GAME : SCENE.START, data.levelId);
     });
 
-    this.input.keyboard?.once('keydown-ENTER', this.restartGame, this);
-    this.input.keyboard?.once('keydown-SPACE', this.restartGame, this);
-    const replay = (): void => this.navigate(SCENE.GAME, data.levelId);
-    const home = (): void => this.navigate(SCENE.START, data.levelId);
+    this.input.keyboard?.on('keydown-ENTER', this.confirmFromKeyboard, this);
+    this.input.keyboard?.on('keydown-SPACE', this.confirmFromKeyboard, this);
+    const replay = (event: KeyboardEvent): void => { if (!event.repeat) this.navigate(SCENE.GAME, data.levelId); };
+    const home = (event: KeyboardEvent): void => { if (!event.repeat) this.navigate(SCENE.START, data.levelId); };
     this.input.keyboard?.on('keydown-R', replay);
     this.input.keyboard?.on('keydown-H', home);
     this.add.text(480, 505, 'Enter 继续 · R 重玩 · H 返回主页', {
       fontFamily: FONT, fontSize: '16px', color: '#ffffff',
     }).setOrigin(0.5);
     this.events.once(Phaser.Scenes.Events.SHUTDOWN, () => {
-      this.input.keyboard?.off('keydown-ENTER', this.restartGame, this);
-      this.input.keyboard?.off('keydown-SPACE', this.restartGame, this);
+      this.input.keyboard?.off('keydown-ENTER', this.confirmFromKeyboard, this);
+      this.input.keyboard?.off('keydown-SPACE', this.confirmFromKeyboard, this);
       this.input.keyboard?.off('keydown-R', replay);
       this.input.keyboard?.off('keydown-H', home);
     });
@@ -120,11 +120,16 @@ export class ResultScene extends Phaser.Scene {
   private restartGame(): void {
     this.navigate(SCENE.GAME, this.result.nextLevelId ?? this.result.levelId);
   }
+  private confirmFromKeyboard(event: KeyboardEvent): void {
+    // A held gameplay key only emits repeats after the result appears. Keep
+    // listening until a fresh physical press, rather than consuming a once().
+    if (!event.repeat) this.restartGame();
+  }
   private navigate(scene: string, levelId: string): void {
     if (this.restarting) return;
     this.restarting = true;
-    this.input.keyboard?.off('keydown-ENTER', this.restartGame, this);
-    this.input.keyboard?.off('keydown-SPACE', this.restartGame, this);
+    this.input.keyboard?.off('keydown-ENTER', this.confirmFromKeyboard, this);
+    this.input.keyboard?.off('keydown-SPACE', this.confirmFromKeyboard, this);
     this.time.delayedCall(0, () => {
       this.scene.stop(SCENE.UI);
       this.scene.stop(SCENE.GAME);

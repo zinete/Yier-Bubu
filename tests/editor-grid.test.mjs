@@ -68,7 +68,7 @@ function sceneFor(kind) {
     setPointerCapture() {}, querySelector: () => undefined, append: (node) => { previewElement = node; },
     focus() {},
   };
-  Object.assign(scene, { map: customMap.newMap(), tool: kind, undo: [], redo: [],
+  Object.assign(scene, { svgAssets: new (load('src/systems/SvgAssetLibrary.ts').SvgAssetLibrary)(), map: customMap.newMap(), tool: kind, undo: [], redo: [],
     paintWidth: 173, paintHeight: 35, renderFrame: 0, previewFrame: 0,
     root: { querySelector: (selector) => selector === 'svg' ? svg : {} },
     render() { this.commitHistory(); }, scheduleCanvas() {}, message() {},

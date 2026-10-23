@@ -55,11 +55,32 @@ export function platformSlices(g: AssetGeometry, material: PlatformMaterial,
 }
 let svgSourceId = 0;
 export function platformSvg(source: string, g: AssetGeometry, material: PlatformMaterial,
-  x: number, y: number, width: number, height: number): string {
-  const id = `platform-source-${svgSourceId++}`;
+  x: number, y: number, width: number, height: number, sourceRef?: string): string {
+  if (width <= 0 || height <= 0) return '';
+  const serial = svgSourceId++;
+  const id = sourceRef ?? `platform-source-${serial}`;
   // 上传图片通常是大段 base64，只定义一次，不能随拼片数重复复制数据。
-  return `<defs><image id="${id}" href="${source}" width="${g.sourceWidth}" height="${g.sourceHeight}"/></defs>` + platformSlices(g, material, x, y, width, height).map((p) => {
-    const transform = p.flipX ? ` transform="translate(${2 * p.sx + p.sw} 0) scale(-1 1)"` : '';
-    return `<svg x="${p.x}" y="${p.y}" width="${p.drawWidth}" height="${p.height}" viewBox="${p.sx} ${p.sy} ${p.sw} ${p.sh}" preserveAspectRatio="none"><use href="#${id}"${transform}/></svg>`;
-  }).join('');
+  const definition = sourceRef ? '' : `<defs><image id="${id}" href="${source}" width="${g.sourceWidth}" height="${g.sourceHeight}"/></defs>`;
+  const surface = platformGeometry(g, material).surfaceY;
+  const scale = height / Math.max(1, g.y + g.height - surface);
+  const top = y - (surface - g.y) * scale, displayHeight = g.height * scale;
+  const piece = (sx: number, sw: number, px: number, py: number, dw: number, flip = false): string => {
+    const transforms = [flip ? `translate(${2 * sx + sw} 0) scale(-1 1)` : '',
+      sourceRef ? `scale(${g.sourceWidth} ${g.sourceHeight})` : ''].filter(Boolean).join(' ');
+    const transform = transforms ? ` transform="${transforms}"` : '';
+    return `<svg x="${px}" y="${py}" width="${dw}" height="${displayHeight}" viewBox="${sx} ${g.y} ${sw} ${g.height}" preserveAspectRatio="none"><use href="#${id}"${transform}/></svg>`;
+  };
+  if (material.mode === 'stretch') return definition + piece(g.x, g.width, x, top, width);
+  const left = Math.floor(g.width * material.leftCap), right = Math.floor(g.width * material.rightCap);
+  const middle = g.width - left - right;
+  const capScale = Math.min(scale, width * .4 / Math.max(1, left + right));
+  const leftWidth = left * capScale, rightWidth = right * capScale;
+  const middleWidth = width - leftWidth - rightWidth;
+  const count = Math.max(1, 2 * Math.round((middleWidth / (middle * scale) - 1) / 2) + 1);
+  const cellWidth = middleWidth / count, pattern = `platform-repeat-${serial}`;
+  // One mirrored pair repeats in SVG; even extremely long editor maps use a fixed node count.
+  const middleMarkup = count === 1 ? piece(g.x + left, middle, x + leftWidth, top, middleWidth + Math.min(.5, rightWidth))
+    : `<defs><pattern id="${pattern}" patternUnits="userSpaceOnUse" x="${x + leftWidth}" y="${top}" width="${cellWidth * 2}" height="${displayHeight}">${piece(g.x + left, middle, 0, 0, cellWidth + Math.min(.5, cellWidth))}${piece(g.x + left, middle, cellWidth, 0, cellWidth + Math.min(.5, cellWidth), true)}</pattern></defs><rect x="${x + leftWidth}" y="${top}" width="${middleWidth + Math.min(.5, rightWidth)}" height="${displayHeight}" fill="url(#${pattern})"/>`;
+  return definition + (left ? piece(g.x, left, x, top, leftWidth + Math.min(.5, cellWidth)) : '') + middleMarkup
+    + (right ? piece(g.x + g.width - right, right, x + width - rightWidth, top, rightWidth) : '');
 }

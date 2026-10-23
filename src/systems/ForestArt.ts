@@ -2,6 +2,7 @@ import Phaser from 'phaser';
 import type { LevelData } from '../types/game';
 import type { SceneTheme } from './CustomMap';
 import { SCENE_PALETTES, backdropLayers } from './SceneBackdrop';
+import { mountViewportDrawing, visibleRepeats, visibleSequence } from './ViewportArt';
 
 /** 绘本森林：代码绘制的分层场景，碰撞仍由关卡数据管理。 */
 export function buildForest(scene: Phaser.Scene, level: LevelData, title?: string, theme: SceneTheme = 'forest', customBackground = false, parallax = 0.2, editableLayers = false): void {
@@ -20,10 +21,10 @@ export function buildForest(scene: Phaser.Scene, level: LevelData, title?: strin
   scene.add.image(0, 0, skyKey).setOrigin(0).setDisplaySize(level.width + 2000, 540).setScrollFactor(0).setDepth(-30);
   if (!customBackground) {
     for (const layer of backdropLayers(theme, parallax)) {
-      const graphics = scene.add.graphics().setScrollFactor(layer.parallax).setDepth(layer.depth);
-      const start = layer.repeat ? -layer.repeat : 0;
-      const end = layer.repeat ? level.width + 1800 : 1;
-      for (let offset = start; offset < end; offset += layer.repeat || 1) {
+      const minX = Math.min(...layer.shapes.map((s) => s.kind === 'rect' ? s.x : s.x - s.width / 2));
+      const maxX = Math.max(...layer.shapes.map((s) => s.kind === 'rect' ? s.x + s.width : s.x + s.width / 2));
+      mountViewportDrawing(scene, layer.parallax, (graphics, view) => {
+      for (const offset of visibleRepeats(view, layer.repeat, minX, maxX)) {
         for (const shape of layer.shapes) {
           graphics.fillStyle(shape.color, shape.alpha);
           if (shape.kind === 'circle') graphics.fillCircle(shape.x + offset, shape.y, shape.width / 2);
@@ -31,24 +32,26 @@ export function buildForest(scene: Phaser.Scene, level: LevelData, title?: strin
           else graphics.fillRoundedRect(shape.x + offset, shape.y, shape.width, shape.height, shape.radius ?? 0);
         }
       }
+      }).setDepth(layer.depth);
     }
   }
-  const art = scene.add.graphics().setDepth(-2);
+  mountViewportDrawing(scene, 1, (art, view) => {
   for (const platform of level.platforms) {
     if (level.id === 'custom' || platform.awakening) continue;
     const { x, y, width, height, kind } = platform;
+    if (x + width < view.x || x > view.x + view.width) continue;
     art.fillStyle(0x715847).fillRoundedRect(x, y + 5, width, height, 10);
     art.fillStyle(palette.earth).fillRoundedRect(x, y + 8, width, height - 8, 10);
     art.fillStyle(0xdeb587).fillRoundedRect(x + 5, y + 10, width - 10, 10, 4);
     art.fillStyle(palette.top).fillRoundedRect(x - 2, y, width + 4, 13, 6);
     art.fillStyle(palette.light).fillRoundedRect(x, y, width, 5, 3);
     if (kind === 'ground' && theme === 'forest') {
-      for (let px = x + 16; px < x + width - 10; px += 55) {
+      for (const px of visibleSequence(x + 16, x + width - 10, 55, view)) {
         art.fillStyle(0xa17a56, 0.5).fillEllipse(px, y + 43 + (px % 23), 18, 10);
         art.lineStyle(2, 0x71964e).lineBetween(px, y, px - 4, y - 8);
         art.lineBetween(px, y, px + 5, y - 11);
       }
-      for (let px = x + 45; px < x + width - 20; px += 145) {
+      for (const px of visibleSequence(x + 45, x + width - 20, 145, view)) {
         art.fillStyle(0x80a75a).fillEllipse(px, y - 7, 36, 17);
         for (let petal = 0; petal < 5; petal += 1)
           art.fillStyle(0xfff5d7).fillCircle(px + Math.cos(petal * 1.256) * 5, y - 15 + Math.sin(petal * 1.256) * 5, 4);
@@ -56,6 +59,7 @@ export function buildForest(scene: Phaser.Scene, level: LevelData, title?: strin
       }
     }
   }
+  }).setDepth(-2);
   // 首屏树与路牌属于装饰，不改变主线路径。
   for (const x of customBackground ? [] : [25, 695, 1470, 2330, 3065, 3910]) {
     const tree = scene.add.graphics().setDepth(-3);

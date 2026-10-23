@@ -49,6 +49,8 @@ assert.equal(platformSlices(g, { ...MOSS_MATERIAL, mode: 'stretch' }, 0, 0, 960,
 assert.equal(platformSlices(g, MOSS_MATERIAL, 0, 0, 0, 32).length, 0);
 assert.ok(platformSvg('asset.png', g, MOSS_MATERIAL, 0, 0, 960, 32).includes('scale(-1 1)'), '编辑器使用相同镜像拼接');
 assert.equal(platformSvg('asset.png', g, MOSS_MATERIAL, 0, 0, 9600, 8).split('asset.png').length, 2, '长平台不能重复内嵌整张 base64 图片');
+const enormousSvg = platformSvg('asset.png', g, MOSS_MATERIAL, 0, 0, 1000000000000, 8);
+assert.ok(enormousSvg.length < 2500 && enormousSvg.includes('<pattern'), '编辑器超长平台也使用固定数量节点');
 
 // 调用真实 GameScene 绘制入口，检查它没有重新走整图拉伸；纹理帧用 Phaser 本身的实现。
 const require = createRequire(import.meta.url);

@@ -11,6 +11,8 @@ import { CoopRules, COOP_DISTANCE, inside, interactionTarget, intersects, outwar
 import { LiftSupport } from '../systems/LiftSupport';
 import { CoopCamera } from '../systems/CoopCamera';
 import type { PlayerId } from '../types/commands';
+import { openEffectPanel } from '../systems/EffectPanel';
+import { openFeedback } from '../systems/ReleaseSupport';
 
 interface Partner {
   id: PlayerId; actor: Player; label: Phaser.GameObjects.Text;
@@ -71,7 +73,9 @@ export class CoopScene extends Phaser.Scene {
     this.createLandmarks();
     const root = document.getElementById('app')!;
     const images = ['start-bubu-thumb', 'start-yier-thumb'].map((key) => (this.textures.get(key).getSourceImage() as HTMLImageElement).src);
-    this.overlay = new CoopOverlay(root, images, { pause: () => this.togglePause(), restart: () => this.navigate(true), home: () => this.navigate(false) });
+    this.overlay = new CoopOverlay(root, images, { pause: () => this.togglePause(), restart: () => this.navigate(true), home: () => this.navigate(false),
+      getAudio: () => this.audio.preferences, setAudio: (settings) => this.audio.setPreferences(settings),
+      effects: () => { this.unfocus(); openEffectPanel(); }, feedback: () => { this.unfocus(); openFeedback(); } });
     const manager = this.game.input.keyboard;
     if (manager) { this.previousCapture = manager.preventDefault; manager.preventDefault = false; }
     if (this.input.keyboard) this.input.keyboard.enabled = false;
@@ -215,6 +219,10 @@ export class CoopScene extends Phaser.Scene {
     }), this.frameDelta);
   }
   private say(message: string): void { this.notice = message; this.noticeUntil = this.clock + 3500; }
+  getFeedbackContext() {
+    return { levelId: coopTutorial.id, mode: 'local-coop' as const, phase: this.phase,
+      checkpointActive: this.rules.checkpointActive, seconds: Math.floor(this.clock / 1000) };
+  }
   private renderOverlay(): void {
     let status = this.noticeUntil > this.clock ? this.notice : '';
     let hint = '';

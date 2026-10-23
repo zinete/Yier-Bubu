@@ -5,6 +5,7 @@ import { mountReleaseSupport } from './systems/ReleaseSupport';
 import { mountEffectPanel } from './systems/EffectPanel';
 import type { HudState } from './types/game';
 import { REGISTRY, SCENE } from './config/constants';
+import type { CoopScene } from './scenes/CoopScene';
 export function bootGame(): () => void {
   const disposeNotice = mountProgressNotice();
   const game = new Phaser.Game(gameConfig);
@@ -16,6 +17,7 @@ export function bootGame(): () => void {
   const closePanel = () => { if (game.input.keyboard) game.input.keyboard.enabled = keyboardEnabled; };
   const disposeSupport = mountReleaseSupport(__BUILD_INFO__, () => game.scene.isActive(SCENE.GAME)
     ? (game.registry.get('hud') as HudState | undefined) ?? {}
+    : game.scene.isActive(SCENE.COOP) ? (game.scene.getScene(SCENE.COOP) as CoopScene).getFeedbackContext()
     : { character: game.registry.get(REGISTRY.CHARACTER) }, pauseForPanel, closePanel);
   const disposeEffects = mountEffectPanel(pauseForPanel, closePanel);
   return () => { disposeNotice(); disposeSupport(); disposeEffects(); game.destroy(true); };

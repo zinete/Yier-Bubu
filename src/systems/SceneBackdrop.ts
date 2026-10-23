@@ -52,16 +52,19 @@ function shapeSvg(s: BackdropShape, offset: number): string {
   if (s.kind === 'ellipse') return `<ellipse cx="${s.x + offset}" cy="${s.y}" rx="${s.width / 2}" ry="${s.height / 2}" ${fill}/>`;
   return `<rect x="${s.x + offset}" y="${s.y}" width="${s.width}" height="${s.height}" rx="${s.radius}" ${fill}/>`;
 }
-export function sceneBackdropSvg(settings: SceneSettings, width: number, background?: MapAsset): string {
+export function sceneBackdropSvg(settings: SceneSettings, width: number, background?: MapAsset,
+  picture?: (asset: MapAsset, width: number, height: number) => string): string {
   const palette = SCENE_PALETTES[settings.theme];
   let html = `<defs><linearGradient id="scene-preview-sky" x2="0" y2="1">${palette.sky.map((color, i) =>
     `<stop offset="${[0, 0.55, 1][i]}" stop-color="${color}"/>`).join('')}</linearGradient></defs>`
     + `<rect width="${width}" height="540" fill="url(#scene-preview-sky)"/>`;
   if (background) {
     const tileWidth = background.width * 540 / background.height;
+    const imageMarkup = (w: number) => picture ? picture(background, w, 540)
+      : `<image href="${background.data}" width="${w}" height="540" preserveAspectRatio="none"/>`;
     const image = settings.backgroundMode === 'repeat'
-      ? `<defs><pattern id="scene-preview-image" width="${tileWidth}" height="540" patternUnits="userSpaceOnUse"><image href="${background.data}" width="${tileWidth}" height="540" preserveAspectRatio="none"/></pattern></defs><rect width="${width}" height="540" fill="url(#scene-preview-image)"/>`
-      : `<image href="${background.data}" width="${width}" height="540" preserveAspectRatio="none"/>`;
+      ? `<defs><pattern id="scene-preview-image" width="${tileWidth}" height="540" patternUnits="userSpaceOnUse">${imageMarkup(tileWidth)}</pattern></defs><rect width="${width}" height="540" fill="url(#scene-preview-image)"/>`
+      : imageMarkup(width);
     return html + `<g data-preview-parallax="${settings.parallax}">${image}</g>`;
   }
   if (settings.baseMode === 'sky') return html;

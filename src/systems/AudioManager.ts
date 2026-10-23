@@ -90,6 +90,12 @@ export class AudioManager {
     this.save();
     return this.settings;
   }
+  get preferences(): AudioSettings { return { ...this.settings }; }
+  setPreferences(settings: AudioSettings): void {
+    this.settings = { sound: !!settings.sound, music: !!settings.music,
+      soundVolume: Phaser.Math.Clamp(settings.soundVolume, 0, 1), musicVolume: Phaser.Math.Clamp(settings.musicVolume, 0, 1) };
+    this.save();
+  }
   private save(): void {
     try {
       localStorage.setItem(REGISTRY.AUDIO, JSON.stringify(this.settings));

@@ -15,6 +15,9 @@ const load = runtime({ window, document: window.document, navigator });
 const { feedbackReport, mountReleaseSupport, openFeedback } = load('src/systems/ReleaseSupport.ts');
 const info = { version: '0.1.0-preview.1', revision: 'test-build', builtAt: '2026-10-19', channel: 'public-preview' };
 assert.equal(JSON.parse(feedbackReport(info, { levelId: 'awakening-demo' }, '')).game.level, 'awakening-demo');
+const coop = JSON.parse(feedbackReport(info, { levelId: 'coop-tutorial', mode: 'local-coop', phase: 'paused', checkpointActive: true }, '')).game;
+assert.equal(coop.level, 'coop-tutorial'); assert.equal(coop.character, 'yier+bubu'); assert.equal(coop.phase, 'paused'); assert.equal(coop.checkpointActive, true);
+assert.equal(JSON.parse(feedbackReport(info, { mode: 'local-coop', phase: 'private-state' }, '')).game.phase, undefined);
 const context = { levelId: 'private-map-title', character: 'bubu', health: 2, customMap: true,
   uploadedAssets: 'secret-image', progress: 'private-save' };
 const report = feedbackReport(info, context, 'a'.repeat(2100));

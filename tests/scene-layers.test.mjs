@@ -22,6 +22,8 @@ const parsed = maps.parseCustomMap(source);
 const defaults = load('src/systems/DefaultAssets.ts', (file) => ({ default: file }));
 assert.equal(canonical(defaults.DEFAULT_ASSETS.map((a) => a.id).sort()), canonical([...maps.BUILTIN_ASSET_IDS].sort()), '内置素材注册和导入白名单一致');
 assert.ok(!defaults.runtimeMapAssets(maps.newMap()).some((a) => a.id.startsWith('builtin-scene-')), '旧地图不下载未使用的新素材');
+const emptyObjects = maps.newMap(); emptyObjects.level.coins = []; emptyObjects.level.enemies = [];
+assert.ok(!defaults.runtimeMapAssets(emptyObjects).some((a) => ['builtin-gold-star', 'builtin-leaf-slime'].includes(a.id)), '没有星星或敌人时不加载相应素材');
 assert.equal(defaults.runtimeMapAssets(source).filter((a) => a.id.startsWith('builtin-scene-')).length, 4);
 const sample = JSON.parse(readFileSync('maps/starlight-relay-layered-60s.json', 'utf8'));
 assert.equal(maps.parseCustomMap(sample).scene.layers.length, 4, '实际示范文件可导入');
@@ -151,6 +153,7 @@ const { EditorScene } = load('src/scenes/EditorScene.ts', (name) => {
 const editor = Object.create(EditorScene.prototype);
 const zones = { background: { innerHTML: '' }, foreground: { innerHTML: '' } };
 Object.assign(editor, { map: make(), selectedLayerId: preset[1].id, undo: [], redo: [], objectSerial: 0,
+  measureUsedAssets() {},
   root: { isConnected: true, querySelector: (selector) => selector === 'svg'
     ? { querySelector: (selector) => zones[selector.match(/zone="([^"]+)"/)?.[1]] } : null },
   render() { this.commitHistory(); this.renderCount = (this.renderCount ?? 0) + 1; },
@@ -199,9 +202,10 @@ const { GameScene } = load('src/scenes/GameScene.ts', (name) => {
   if (name.endsWith('/DefaultAssets')) return { mapAssets: () => [] };
   if (name.endsWith('/ForestArt')) return { buildForest: (...args) => { forestArgs = args; } };
   if (name.endsWith('/SceneLayers')) return { mountSceneLayers: (...args) => { mounted = args; } };
+  if (name.endsWith('/ViewportArt')) return { ViewportPlatformRenderer: class { add() {} sync() {} } };
   return {};
 });
 const game = Object.assign(Object.create(GameScene.prototype), { customMap: make(), level: maps.newMap().level,
-  customTextures: new Map(), drawObjectSkin() {} });
+  customTextures: new Map(), skinKey() {}, drawObjectSkin() {} });
 game.createBackground();
 assert.equal(mounted[1], game.customMap.scene.layers); assert.equal(forestArgs[4], true); assert.equal(forestArgs[6], true);

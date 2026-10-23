@@ -27,11 +27,14 @@ export const DEFAULT_OBJECT_SKINS: Record<string, string> = {
 };
 /** 编辑库展示全部素材，试玩只加载被地图引用的素材，旧地图不额外下载新背景。 */
 export function runtimeMapAssets(map: CustomMap): MapAsset[] {
-  const ids = new Set(Object.values(DEFAULT_OBJECT_SKINS));
+  const ids = new Set<string>();
   const reference = (value: { assetId?: string }) => { if (value.assetId) ids.add(value.assetId); };
-  [...map.level.platforms, ...map.level.enemies, map.level.spawn, map.level.checkpoint, map.level.flag,
-    ...(map.decorations ?? [])].forEach(reference);
-  map.level.coins.forEach((coin) => { if (!Array.isArray(coin)) reference(coin); });
+  const object = (kind: string, value: { assetId?: string }) => reference({ assetId: value.assetId ?? DEFAULT_OBJECT_SKINS[kind] });
+  map.level.platforms.forEach((value) => object('platform', value));
+  map.level.enemies.forEach((value) => object('enemy', value));
+  map.level.coins.forEach((coin) => object('coin', Array.isArray(coin) ? {} : coin));
+  for (const kind of ['spawn', 'checkpoint', 'flag'] as const) object(kind, map.level[kind]);
+  map.decorations?.forEach(reference);
   if (map.scene?.backgroundAssetId) ids.add(map.scene.backgroundAssetId);
   map.scene?.layers?.forEach((layer) => { if (layer.visible) ids.add(layer.assetId); });
   return mapAssets(map).filter((asset) => ids.has(asset.id));

@@ -39,36 +39,70 @@ export function assetLayout(geometry: AssetGeometry, x: number, y: number, width
 }
 
 const cache = new Map<string, AssetGeometry>();
-const pending = new Map<string, Set<() => void>>();
-export function cachedAssetGeometry(source: string): AssetGeometry | undefined { return cache.get(source); }
+export const GEOMETRY_CACHE_LIMIT = 64;
+export const GEOMETRY_CACHE_CHARS = 4 * 1024 * 1024;
+let cachedChars = 0;
+interface GeometryRequest { image: HTMLImageElement; listeners: Set<() => void> }
+const pending = new Map<string, GeometryRequest>();
+function cacheGeometry(source: string, value: AssetGeometry): void {
+  if (cache.has(source)) { cache.delete(source); cachedChars -= source.length; }
+  // 过大外部图片可测量但不长驻；正常地图内嵌图片上限为 350KB。
+  if (source.length > GEOMETRY_CACHE_CHARS) return;
+  cache.set(source, value); cachedChars += source.length;
+  while (cache.size > GEOMETRY_CACHE_LIMIT || cachedChars > GEOMETRY_CACHE_CHARS) {
+    const oldest = cache.keys().next().value!;
+    cache.delete(oldest); cachedChars -= oldest.length;
+  }
+}
+export function cachedAssetGeometry(source: string): AssetGeometry | undefined {
+  const value = cache.get(source);
+  if (value) { cache.delete(source); cache.set(source, value); }
+  return value;
+}
+export function assetGeometryCacheStats(): { entries: number; sourceChars: number; pending: number } {
+  return { entries: cache.size, sourceChars: cachedChars, pending: pending.size };
+}
 export function readAssetGeometry(source: string, image: CanvasImageSource, width: number, height: number): AssetGeometry {
-  const existing = cache.get(source); if (existing) return existing;
+  const existing = cachedAssetGeometry(source); if (existing) return existing;
   const canvas = document.createElement('canvas'); canvas.width = width; canvas.height = height;
   const context = canvas.getContext('2d', { willReadFrequently: true });
   if (!context) throw new Error('无法读取素材透明边界');
   context.drawImage(image, 0, 0, width, height);
   const geometry = analyzeAssetPixels(context.getImageData(0, 0, width, height).data, width, height);
-  cache.set(source, geometry);
+  cacheGeometry(source, geometry);
   return geometry;
 }
 /** 编辑器异步测量，试玩则直接从已加载纹理测量；二者共用结果。 */
-export function ensureAssetGeometry(source: string, onReady: () => void): void {
-  if (cache.has(source)) return;
-  const listeners = pending.get(source);
-  if (listeners) { listeners.add(onReady); return; }
-  pending.set(source, new Set([onReady]));
+export function ensureAssetGeometry(source: string, onReady: () => void): () => void {
+  if (cachedAssetGeometry(source)) return () => {};
+  const unsubscribe = (request: GeometryRequest): (() => void) => () => {
+    request.listeners.delete(onReady);
+    if (!request.listeners.size && pending.get(source) === request) {
+      pending.delete(source); request.image.onload = null; request.image.onerror = null;
+      request.image.src = '';
+    }
+  };
+  const existing = pending.get(source);
+  if (existing) { existing.listeners.add(onReady); return unsubscribe(existing); }
   const image = new Image();
+  const request: GeometryRequest = { image, listeners: new Set([onReady]) };
+  pending.set(source, request);
   image.onload = () => {
+    if (pending.get(source) !== request) return;
     try { readAssetGeometry(source, image, image.naturalWidth, image.naturalHeight); }
     catch {
-      cache.set(source, { sourceWidth: image.naturalWidth, sourceHeight: image.naturalHeight,
+      cacheGeometry(source, { sourceWidth: image.naturalWidth, sourceHeight: image.naturalHeight,
         x: 0, y: 0, width: image.naturalWidth, height: image.naturalHeight, surfaceY: 0 });
     }
     finally {
-      const callbacks = pending.get(source); pending.delete(source);
-      callbacks?.forEach((callback) => callback());
+      pending.delete(source); image.onload = null; image.onerror = null;
+      request.listeners.forEach((callback) => callback()); request.listeners.clear();
     }
   };
-  image.onerror = () => { pending.delete(source); };
+  image.onerror = () => {
+    if (pending.get(source) === request) pending.delete(source);
+    request.listeners.clear(); image.onload = null; image.onerror = null;
+  };
   image.src = source;
+  return unsubscribe(request);
 }

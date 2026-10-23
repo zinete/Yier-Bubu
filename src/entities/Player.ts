@@ -6,8 +6,8 @@ import { characterBodyBounds } from '../systems/CharacterBody';
 import type { MovementCommand, PlayerId } from '../types/commands';
 export class Player extends Phaser.Physics.Arcade.Sprite {
   readonly character: CharacterId;
-  private coyoteUntil = 0;
-  private bufferedJumpUntil = 0;
+  private coyoteUntil = -Infinity;
+  private bufferedJumpUntil = -Infinity;
   private facing = 1;
   private hurtUntil = 0;
   private lastAnimation = '';
@@ -34,14 +34,16 @@ export class Player extends Phaser.Physics.Arcade.Sprite {
   applyCommand(time: number, command: MovementCommand): boolean {
     const body = this.arcadeBody;
     let jumped = false;
-    const wasGrounded = body.blocked.down || body.touching.down;
+    // Arcade retains contact flags on render frames without a physics step.
+    // An already rising body must not replenish its consumed ground jump.
+    const wasGrounded = body.velocity.y >= 0 && (body.blocked.down || body.touching.down);
     if (wasGrounded) this.coyoteUntil = time + PLAYER.COYOTE_TIME;
     if (command.jumpPressed) this.bufferedJumpUntil = time + PLAYER.JUMP_BUFFER_TIME;
     if (this.bufferedJumpUntil >= time && (wasGrounded || this.coyoteUntil >= time)) {
       body.setVelocityY(PLAYER.JUMP_VELOCITY);
       this.scene.game.events.emit('player-jump');
-      this.bufferedJumpUntil = 0;
-      this.coyoteUntil = 0;
+      this.bufferedJumpUntil = -Infinity;
+      this.coyoteUntil = -Infinity;
       jumped = true;
     }
     const direction = Math.max(-1, Math.min(1, command.moveX));
@@ -86,7 +88,7 @@ export class Player extends Phaser.Physics.Arcade.Sprite {
       this.playAnimation('hurt');
       return;
     }
-    if (!body.blocked.down && !body.touching.down)
+    if (body.velocity.y < 0 || (!body.blocked.down && !body.touching.down))
       this.playAnimation(body.velocity.y < 0 ? 'jump' : 'fall');
     else this.playAnimation(Math.abs(body.velocity.x) > 20 ? 'run' : 'idle');
   }

@@ -26,6 +26,7 @@ import buttonPause from '../assets/ui/button-pause.png';
 import buttonPlay from '../assets/ui/button-play.png';
 import { ViewportManager } from '../systems/ViewportManager';
 import { generatedAudio } from '../systems/GeneratedAudio';
+import { isTouchPrimaryDevice } from '../systems/UILayout';
 
 const IMAGES = [
   ['start-background', startBackground], ['start-logo', gameLogo],
@@ -35,20 +36,22 @@ const IMAGES = [
   ['start-yier-thumb', yierThumb], ['start-bubu-thumb', bubuThumb],
   ['ui-portrait-frame', portraitFrame], ['ui-heart-full', iconHeartFull], ['ui-heart-empty', iconHeartEmpty],
   ['ui-star', iconStar], ['ui-coin', iconCoin], ['ui-timer', iconTimer],
-  ['ui-joystick-idle', joystickIdle], ['ui-button-jump', buttonJump], ['ui-button-throw', buttonThrow],
   ['ui-button-sound-on', buttonSoundOn], ['ui-button-sound-off', buttonSoundOff],
   ['ui-button-pause', buttonPause], ['ui-button-play', buttonPlay],
 ] as const;
+const TOUCH_IMAGES = [['ui-joystick-idle', joystickIdle], ['ui-button-jump', buttonJump], ['ui-button-throw', buttonThrow]] as const;
 
 export class PreloadScene extends Phaser.Scene {
   private label!: Phaser.GameObjects.Text;
   private retryButton!: Phaser.GameObjects.Text;
   private retrying = false;
+  private touchAssets = false;
   constructor() {
     super(SCENE.PRELOAD);
   }
   preload(): void {
     this.retrying = false;
+    this.touchAssets = isTouchPrimaryDevice();
     ViewportManager.attach(this);
     this.label = this.add
       .text(480, 240, '正在加载冒险素材…', { fontSize: '22px', color: '#1d2b3a', align: 'center', wordWrap: { width: 820 } })
@@ -70,9 +73,10 @@ export class PreloadScene extends Phaser.Scene {
     if (!this.textures.exists('characters'))
       this.load.spritesheet('characters', characterSheet, { frameWidth: 128, frameHeight: 142 });
     for (const [key, url] of IMAGES) if (!this.textures.exists(key)) this.load.image(key, url);
+    if (this.touchAssets) for (const [key, url] of TOUCH_IMAGES) if (!this.textures.exists(key)) this.load.image(key, url);
   }
   create(): void {
-    const missing = ['characters', ...IMAGES.map(([key]) => key)].filter((key) => !this.textures.exists(key));
+    const missing = ['characters', ...IMAGES.map(([key]) => key), ...(this.touchAssets ? TOUCH_IMAGES.map(([key]) => key) : [])].filter((key) => !this.textures.exists(key));
     if (missing.length) {
       this.label.setText(`有 ${missing.length} 项必要素材未能加载。\n请检查网络后重试；已加载的素材不会重复下载。\n${missing.slice(0, 3).join('、')}`);
       this.retryButton.setVisible(true);

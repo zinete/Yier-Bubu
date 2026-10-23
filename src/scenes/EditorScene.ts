@@ -3,7 +3,8 @@ import { SCENE } from '../config/constants';
 import { DRAFT_KEY, newMap, parseCustomMap, playablePlatforms, validateMapWidth, type CustomMap, type MapAsset, type SceneSettings, type SceneLayer } from '../systems/CustomMap';
 import { PLAYER } from '../config/constants';
 import type { AwakeningData, EnemyData, PlatformData } from '../types/game';
-import { mapAssets, DEFAULT_ASSETS, DEFAULT_OBJECT_SKINS } from '../systems/DefaultAssets';
+import { mapAssets, runtimeMapAssets, DEFAULT_ASSETS, DEFAULT_OBJECT_SKINS } from '../systems/DefaultAssets';
+import { SvgAssetLibrary } from '../systems/SvgAssetLibrary';
 import { assetLayout, cachedAssetGeometry, ensureAssetGeometry } from '../systems/AssetGeometry';
 import { materialFor, platformSvg } from '../systems/PlatformMaterial';
 import { EDITOR_GRID, objectBounds, visualBounds, snapObjectToGrid, resizeObjectOnGrid, type GridObject } from '../systems/ObjectGeometry';
@@ -34,6 +35,8 @@ export class EditorScene extends Phaser.Scene {
   private selections?: Selection[];
   private marquee?: { x: number; y: number; endX: number; endY: number; previous: Selection[]; additive: boolean; moved: boolean };
   private assetId?: string;
+  private svgAssets = new SvgAssetLibrary();
+  private geometryRequests = new Map<string, () => void>();
   private refreshGeometry = (): void => {
     if (this.root?.isConnected && !this.drag && !this.marquee) {
       this.renderCanvas();
@@ -278,7 +281,7 @@ export class EditorScene extends Phaser.Scene {
       if (this.pendingForms.size) {
         (event.target as HTMLSelectElement).value = this.materialAssetId; this.pendingMessage(); return;
       }
-      this.materialAssetId = (event.target as HTMLSelectElement).value; this.renderMaterialSettings();
+      this.materialAssetId = (event.target as HTMLSelectElement).value; this.measureUsedAssets(); this.renderMaterialSettings();
     }, options);
     svg.addEventListener('pointerdown', (event) => this.pointerDown(event), options);
     svg.addEventListener('pointermove', (event) => this.pointerMove(event), options);
@@ -352,6 +355,8 @@ export class EditorScene extends Phaser.Scene {
       input.value = '';
     }, options);
     this.events.once(Phaser.Scenes.Events.SHUTDOWN, () => {
+      this.geometryRequests.forEach((cancel) => cancel()); this.geometryRequests.clear();
+      this.svgAssets = new SvgAssetLibrary(); this.librarySnapshot = [];
       this.endDrag(true);
       this.commitSceneEdit(); this.flushRecovery();
       if (this.backupTimer) clearTimeout(this.backupTimer); this.backupTimer = undefined;
@@ -370,6 +375,24 @@ export class EditorScene extends Phaser.Scene {
     }
   }
   private svg(): SVGSVGElement { return this.root.querySelector('svg')!; }
+  private syncImageDefinitions(): void {
+    const defs = this.svg().querySelector('[data-image-library]');
+    if (defs && defs.getAttribute('data-count') !== String(this.svgAssets.count)) {
+      defs.innerHTML = this.svgAssets.definitions;
+      defs.setAttribute('data-count', String(this.svgAssets.count));
+    }
+  }
+  private scenePicture = (asset: MapAsset, width: number, height: number): string =>
+    this.svgAssets.image(asset.data, 0, 0, width, height);
+  private measureUsedAssets(): void {
+    const used = runtimeMapAssets(this.map);
+    const editing = [this.assetId ?? DEFAULT_OBJECT_SKINS[this.tool], this.materialAssetId];
+    used.push(...mapAssets(this.map).filter((a) => editing.includes(a.id)));
+    const sources = new Set(used.map((a) => a.data));
+    for (const [source, cancel] of this.geometryRequests) if (!sources.has(source)) { cancel(); this.geometryRequests.delete(source); }
+    for (const source of sources) if (!this.geometryRequests.has(source))
+      this.geometryRequests.set(source, ensureAssetGeometry(source, this.refreshGeometry));
+  }
   private message(text: string): void { this.root.querySelector('footer')!.textContent = text; }
   private switchSidebar(panel: SidebarPanel, focus = false): void {
     if (!['place', 'assets', 'scene', 'map'].includes(panel)) return;
@@ -1085,17 +1108,18 @@ export class EditorScene extends Phaser.Scene {
       const g = asset && cachedAssetGeometry(asset.data);
       if (element && asset && g && (this.selected.kind === 'platform' || value.solid)) {
         element.removeAttribute('transform');
-        element.innerHTML = platformSvg(asset.data, g, materialFor(asset.id, this.map.platformMaterials), x, y, Number(value.width), Number(value.height))
+        element.innerHTML = platformSvg(asset.data, g, materialFor(asset.id, this.map.platformMaterials), x, y, Number(value.width), Number(value.height), this.svgAssets.reference(asset.data))
           + this.platformOutline(x, y, Number(value.width), Number(value.height), true);
       } else if (element && asset) {
         element.removeAttribute('transform');
         const width = Number(value.width), height = Number(value.height);
-        const picture = g && this.selected.kind !== 'decoration' ? `<svg x="${x}" y="${y}" width="${width}" height="${height}" viewBox="${g.x} ${g.y} ${g.width} ${g.height}" preserveAspectRatio="none"><image href="${asset.data}" width="${g.sourceWidth}" height="${g.sourceHeight}"/></svg>`
-          : `<image href="${asset.data}" x="${x}" y="${y}" width="${width}" height="${height}" preserveAspectRatio="none"/>`;
+        const picture = g && this.selected.kind !== 'decoration' ? `<svg x="${x}" y="${y}" width="${width}" height="${height}" viewBox="${g.x} ${g.y} ${g.width} ${g.height}" preserveAspectRatio="none">${this.svgAssets.image(asset.data, 0, 0, g.sourceWidth, g.sourceHeight)}</svg>`
+          : this.svgAssets.image(asset.data, x, y, width, height);
         element.innerHTML = `<g pointer-events="none">${picture}</g>`
           + this.objectOutline(x, y, Number(value.width), Number(value.height), true);
       }
     } else element?.setAttribute('transform', `translate(${x - this.drag.initialX} ${y - this.drag.initialY})`);
+    this.syncImageDefinitions();
     const handle = this.svg().querySelector('[data-resize]');
     handle?.setAttribute('x', String(x + Number(value.width ?? 0) - 8));
     handle?.setAttribute('y', String(y + Number(value.height ?? 0) - 8));
@@ -1260,6 +1284,7 @@ export class EditorScene extends Phaser.Scene {
     this.root.querySelector('.tool-status')!.textContent = `框选中 · ${this.activeSelections().length} 个对象（完全包含）`;
   }
   private renderCanvas(): void {
+    this.svgAssets = new SvgAssetLibrary();
     const l = this.map.level;
     const svg = this.svg(); svg.setAttribute('viewBox', `0 0 ${l.width} 540`);
     svg.setAttribute('width', String(l.width)); svg.setAttribute('height', '540');
@@ -1267,7 +1292,7 @@ export class EditorScene extends Phaser.Scene {
     let html = `<defs><pattern id="map-grid" width="${EDITOR_GRID}" height="${EDITOR_GRID}" patternUnits="userSpaceOnUse"><path d="M${EDITOR_GRID} 0H0V${EDITOR_GRID}" fill="none" stroke="#9abb9a" stroke-width=".5"/></pattern></defs>`;
     svg.style.background = SCENE_PALETTES[this.map.scene?.theme ?? 'forest'].sky[0];
     const library = mapAssets(this.map);
-    for (const asset of library) ensureAssetGeometry(asset.data, this.refreshGeometry);
+    this.measureUsedAssets();
     html += `<g data-scene-background pointer-events="none">${this.sceneBackgroundMarkup()}</g>`;
     html += `<g data-scene-layer-zone="background">${this.sceneLayerMarkup('background')}</g>`;
     html += `<rect width="${l.width}" height="540" fill="url(#map-grid)" opacity="0.65" pointer-events="none"/>`;
@@ -1278,16 +1303,16 @@ export class EditorScene extends Phaser.Scene {
       if ((p.solid ? 'back' : p.layer ?? 'back') !== layer) return '';
       if (p.solid) return skin('decoration', i, p, p.x, p.y, p.width, p.height, true);
       const asset = library.find((item) => item.id === p.assetId); if (!asset) return '';
-      return `<g data-object="decoration" data-index="${i}"><image href="${asset.data}" x="${p.x}" y="${p.y}" width="${p.width}" height="${p.height}" preserveAspectRatio="none"/><rect data-selection-outline x="${p.x}" y="${p.y}" width="${p.width}" height="${p.height}" fill="transparent" stroke="${selected('decoration', i)}" stroke-width="1"/></g>`;
+      return `<g data-object="decoration" data-index="${i}">${this.svgAssets.image(asset.data, p.x, p.y, p.width, p.height)}<rect data-selection-outline x="${p.x}" y="${p.y}" width="${p.width}" height="${p.height}" fill="transparent" stroke="${selected('decoration', i)}" stroke-width="1"/></g>`;
     }).join('');
     const skin = (kind: string, index: number, value: { assetId?: string; x: number; y: number; awakening?: AwakeningData }, x: number, y: number, width: number, height: number, solid = kind === 'platform'): string => {
       const asset = library.find((item) => item.id === (value.assetId ?? DEFAULT_OBJECT_SKINS[kind]));
       if (!asset) return '';
       const geometry = cachedAssetGeometry(asset.data);
       const layout = geometry ? assetLayout(geometry, x, y, width, height, solid) : { x, y, width, height };
-      const picture = geometry && solid ? platformSvg(asset.data, geometry, materialFor(asset.id, this.map.platformMaterials), x, y, width, height) : geometry
-        ? `<svg x="${layout.x}" y="${layout.y}" width="${layout.width}" height="${layout.height}" viewBox="${geometry.x} ${geometry.y} ${geometry.width} ${geometry.height}" preserveAspectRatio="none"><image href="${asset.data}" width="${geometry.sourceWidth}" height="${geometry.sourceHeight}"/></svg>`
-        : `<image href="${asset.data}" x="${x}" y="${y}" width="${width}" height="${height}" preserveAspectRatio="none"/>`;
+      const picture = geometry && solid ? platformSvg(asset.data, geometry, materialFor(asset.id, this.map.platformMaterials), x, y, width, height, this.svgAssets.reference(asset.data)) : geometry
+        ? `<svg x="${layout.x}" y="${layout.y}" width="${layout.width}" height="${layout.height}" viewBox="${geometry.x} ${geometry.y} ${geometry.width} ${geometry.height}" preserveAspectRatio="none">${this.svgAssets.image(asset.data, 0, 0, geometry.sourceWidth, geometry.sourceHeight)}</svg>`
+        : this.svgAssets.image(asset.data, x, y, width, height);
       const isSelected = selectionKeys.has(`${kind}:${index}`);
       const hit = objectBounds(kind as Selection['kind'], { ...value, width, height });
       return `<g data-object="${kind}" data-index="${index}"><g pointer-events="none" opacity="${value.awakening ? '0.45' : '1'}">${picture}</g>${solid ? this.platformOutline(x, y, width, height, isSelected) : this.objectOutline(hit.x, hit.y, hit.width, hit.height, isSelected)}${this.awakeningMarkup({ ...value, width, height }, true)}</g>`;
@@ -1315,7 +1340,7 @@ export class EditorScene extends Phaser.Scene {
       const bounds = itemsBounds(selectionItems(this.map, refs))!;
       html += `<rect data-selection-bounds x="${bounds.x}" y="${bounds.y}" width="${bounds.width}" height="${bounds.height}" fill="none" stroke="#e69c31" stroke-dasharray="6 4" vector-effect="non-scaling-stroke" pointer-events="none"/>`;
     }
-    svg.innerHTML = html;
+    svg.innerHTML = `<defs data-image-library data-count="${this.svgAssets.count}">${this.svgAssets.definitions}</defs>` + html;
     this.updateSceneParallax();
     this.drawPreview();
   }
@@ -1330,9 +1355,10 @@ export class EditorScene extends Phaser.Scene {
     const hit = objectBounds(this.tool, placed);
     const bounds = cachedAssetGeometry(asset.data);
     const layout = bounds ? assetLayout(bounds, x, y, width, height, this.tool === 'platform') : { x, y, width, height };
-    const picture = bounds && this.tool === 'platform' ? platformSvg(asset.data, bounds, materialFor(asset.id, this.map.platformMaterials), x, y, width, height) : bounds
-      ? `<svg x="${layout.x}" y="${layout.y}" width="${layout.width}" height="${layout.height}" viewBox="${bounds.x} ${bounds.y} ${bounds.width} ${bounds.height}" preserveAspectRatio="none"><image href="${asset.data}" width="${bounds.sourceWidth}" height="${bounds.sourceHeight}"/></svg>`
-      : `<image href="${asset.data}" x="${x}" y="${y}" width="${width}" height="${height}"/>`;
+    const picture = bounds && this.tool === 'platform' ? platformSvg(asset.data, bounds, materialFor(asset.id, this.map.platformMaterials), x, y, width, height, this.svgAssets.reference(asset.data)) : bounds
+      ? `<svg x="${layout.x}" y="${layout.y}" width="${layout.width}" height="${layout.height}" viewBox="${bounds.x} ${bounds.y} ${bounds.width} ${bounds.height}" preserveAspectRatio="none">${this.svgAssets.image(asset.data, 0, 0, bounds.sourceWidth, bounds.sourceHeight)}</svg>`
+      : this.svgAssets.image(asset.data, x, y, width, height);
+    this.syncImageDefinitions();
     const g = document.createElementNS('http://www.w3.org/2000/svg', 'g');
     g.dataset.placementPreview = ''; g.setAttribute('pointer-events', 'none'); g.setAttribute('opacity', '0.55');
     g.innerHTML = `${picture}${this.awakeningMarkup(placed)}<rect x="${hit.x}" y="${hit.y}" width="${hit.width}" height="${hit.height}" fill="none" stroke="#307c63" stroke-dasharray="5 4"/>`;
@@ -1372,7 +1398,7 @@ export class EditorScene extends Phaser.Scene {
       if (scenery) button.dataset.sceneAsset = asset.id;
       else button.dataset.asset = asset.id;
       button.title = scenery ? '新增独立场景图层，在右侧调整位置与视差' : asset.id === 'builtin-moss-platform' ? '连续放置可站立平台' : '选择素材并设置放置用途';
-      const image = document.createElement('img'); image.src = asset.data; image.width = 40; image.height = 40; image.style.objectFit = 'contain'; image.alt = '';
+      const image = document.createElement('img'); image.loading = 'lazy'; image.decoding = 'async'; image.src = asset.data; image.width = 40; image.height = 40; image.style.objectFit = 'contain'; image.alt = '';
       const label = document.createElement('span'); label.textContent = asset.name + (asset.id === 'builtin-moss-platform' ? ' · 可站立' : '');
       button.append(image, label); (scenery ? sceneryAssets : DEFAULT_ASSETS.some((item) => item.id === asset.id) ? defaults : uploads).append(button);
     }
@@ -1473,7 +1499,7 @@ export class EditorScene extends Phaser.Scene {
   }
   private sceneLayerMarkup(group: SceneLayer['group']): string {
     const layers = this.map.scene?.layers;
-    return layers?.length ? sceneLayersSvg(layers, mapAssets(this.map), this.map.level.width, group) : '';
+    return layers?.length ? sceneLayersSvg(layers, mapAssets(this.map), this.map.level.width, group, this.scenePicture) : '';
   }
   private renderLayerArtwork(): void {
     this.updateDraftState();
@@ -1481,6 +1507,8 @@ export class EditorScene extends Phaser.Scene {
       const zone = this.svg().querySelector(`[data-scene-layer-zone="${group}"]`);
       if (zone) zone.innerHTML = this.sceneLayerMarkup(group);
     }
+    this.syncImageDefinitions();
+    this.measureUsedAssets();
     this.updateSceneParallax();
   }
   private currentSceneLayer(): SceneLayer | undefined {
@@ -1711,7 +1739,7 @@ export class EditorScene extends Phaser.Scene {
     const background = mapAssets(this.map).find((asset) => asset.id === settings.backgroundAssetId);
     const measured = background && cachedAssetGeometry(background.data);
     const image = background && measured ? { ...background, width: measured.sourceWidth, height: measured.sourceHeight } : background;
-    return sceneBackdropSvg(settings, this.map.level.width, image);
+    return sceneBackdropSvg(settings, this.map.level.width, image, this.scenePicture);
   }
   private renderSceneBackground(parallaxOnly = false): void {
     const svg = this.svg(); const background = svg.querySelector('[data-scene-background]');
@@ -1720,7 +1748,7 @@ export class EditorScene extends Phaser.Scene {
     const factors = settings.backgroundAssetId ? [settings.parallax] : settings.baseMode === 'sky' ? [] : backdropLayers(settings.theme, settings.parallax).map((l) => l.parallax);
     if (parallaxOnly && layers.length === factors.length) {
       layers.forEach((layer, i) => layer.setAttribute('data-preview-parallax', String(factors[i])));
-    } else if (background) background.innerHTML = this.sceneBackgroundMarkup();
+    } else if (background) { background.innerHTML = this.sceneBackgroundMarkup(); this.syncImageDefinitions(); }
     svg.style.background = SCENE_PALETTES[this.map.scene?.theme ?? 'forest'].sky[0];
     this.updateSceneParallax();
   }

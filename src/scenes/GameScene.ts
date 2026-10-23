@@ -14,7 +14,8 @@ import { buildForest } from '../systems/ForestArt';
 import { SkillEffects } from '../systems/SkillEffects';
 import { parseCustomMap, playablePlatforms, type CustomMap } from '../systems/CustomMap';
 import { canLandOnPlatform } from '../systems/PlatformPhysics';
-import { mapAssets, runtimeMapAssets, DEFAULT_OBJECT_SKINS } from '../systems/DefaultAssets';
+import { mapAssets, DEFAULT_OBJECT_SKINS } from '../systems/DefaultAssets';
+import { ViewportPlatformRenderer } from '../systems/ViewportArt';
 import { assetLayout, readAssetGeometry, type AssetGeometry } from '../systems/AssetGeometry';
 import { materialFor, platformSlices } from '../systems/PlatformMaterial';
 import { CUSTOM_OBJECTS } from '../systems/ObjectGeometry';
@@ -22,6 +23,8 @@ import { mountSceneLayers } from '../systems/SceneLayers';
 import { AwakeningWorld } from '../systems/AwakeningWorld';
 import { awakeningDemo } from '../levels/awakeningDemo';
 import { BubbleShield, SHIELD } from '../systems/BubbleShield';
+import { customMapResources } from '../systems/CustomMapResources';
+import { CustomMapLoadScreen } from '../systems/CustomMapLoadScreen';
 export class GameScene extends Phaser.Scene {
   private player!: Player;
   private inputManager!: InputManager;
@@ -54,10 +57,19 @@ export class GameScene extends Phaser.Scene {
   private customMap?: CustomMap;
   private customTextures = new Map<string, string>();
   private assetGeometry = new Map<string, AssetGeometry>();
+  private mapLoadScreen?: CustomMapLoadScreen;
+  private mapLoading = false;
+  private mapLoadLeaving = false;
+  private mapReady = false;
+  private mapAssetSerial = 0;
+  private platformArt?: ViewportPlatformRenderer;
   constructor() {
     super(SCENE.GAME);
   }
   init(data: { levelId?: string; customMap?: CustomMap; demo?: boolean }): void {
+    this.status = 'paused';
+    this.mapLoading = false; this.mapLoadLeaving = false; this.mapReady = false;
+    this.platformArt = undefined;
     this.customTextures.clear();
     this.assetGeometry.clear();
     this.customMap = data.customMap ? parseCustomMap(data.customMap) : undefined;
@@ -66,22 +78,86 @@ export class GameScene extends Phaser.Scene {
       : this.demo ? awakeningDemo : getLevel(beginLevel(data.levelId ?? loadProgress().currentLevel));
   }
   preload(): void {
-    for (const [index, asset] of (this.customMap ? runtimeMapAssets(this.customMap) : []).entries()) {
-      const key = `custom-asset-${Date.now()}-${index}`;
+    if (!this.customMap) return;
+    const assets = customMapResources(this.customMap).assets;
+    this.events.once(Phaser.Scenes.Events.SHUTDOWN, this.destroyMapLoading, this);
+    if (assets.length) { this.mapLoadScreen = new CustomMapLoadScreen(() => this.retryMapLoading(), () => this.leaveMapLoading()); this.mapLoadScreen.loading(); }
+    for (const asset of assets) {
+      const key = `custom-asset-${Date.now()}-${++this.mapAssetSerial}`;
       this.customTextures.set(asset.id, key);
       this.load.image(key, asset.data);
     }
   }
   create(): void {
-    for (const asset of this.customMap ? runtimeMapAssets(this.customMap) : []) {
+    if (!this.prepareMapAssets()) return;
+    this.mapReady = true;
+    this.startPlayableMap();
+  }
+  private prepareMapAssets(): boolean {
+    if (!this.customMap) return true;
+    const { assets, required } = customMapResources(this.customMap);
+    const missingRequired: string[] = [], missingOptional: string[] = [];
+    for (const asset of assets) {
       const key = this.customTextures.get(asset.id);
-      if (!key || !this.textures.exists(key)) continue;
-      const texture = this.textures.get(key);
-      const frame = texture.get();
-      const bounds = readAssetGeometry(asset.data, texture.getSourceImage() as CanvasImageSource, frame.cutWidth, frame.cutHeight);
-      texture.add('content', 0, bounds.x, bounds.y, bounds.width, bounds.height);
-      this.assetGeometry.set(key, bounds);
+      let ready = false;
+      if (key && this.textures.exists(key)) {
+        try {
+          if (!this.assetGeometry.has(key)) {
+            const texture = this.textures.get(key);
+            const frame = texture.get();
+            if (!(frame.cutWidth > 0 && frame.cutHeight > 0)) throw new Error('素材尺寸无效');
+            const bounds = readAssetGeometry(asset.data, texture.getSourceImage() as CanvasImageSource, frame.cutWidth, frame.cutHeight);
+            if (!(bounds.width > 0 && bounds.height > 0)) throw new Error('素材边界无效');
+            texture.add('content', 0, bounds.x, bounds.y, bounds.width, bounds.height);
+            this.assetGeometry.set(key, bounds);
+          }
+          ready = true;
+        } catch {
+          this.textures.remove(key); this.assetGeometry.delete(key);
+        }
+      }
+      if (!ready) (required.has(asset.id) ? missingRequired : missingOptional).push(`${asset.name} (${asset.id})`);
     }
+    if (missingRequired.length) {
+      this.mapLoadScreen ??= new CustomMapLoadScreen(() => this.retryMapLoading(), () => this.leaveMapLoading());
+      this.mapLoadScreen.failed(missingRequired, missingOptional);
+      return false;
+    }
+    if (missingOptional.length) {
+      this.mapLoadScreen ??= new CustomMapLoadScreen(() => this.retryMapLoading(), () => this.leaveMapLoading());
+      this.mapLoadScreen.degraded(missingOptional);
+    } else { this.mapLoadScreen?.destroy(); this.mapLoadScreen = undefined; }
+    return true;
+  }
+  private retryMapLoading(): void {
+    if (!this.customMap || this.mapReady || this.mapLoading || this.mapLoadLeaving) return;
+    this.mapLoading = true; this.mapLoadScreen?.loading();
+    // Keep all successful textures and frames; only request the missing/invalid ones.
+    for (const asset of customMapResources(this.customMap).assets) {
+      const key = this.customTextures.get(asset.id);
+      if (key && !this.textures.exists(key)) this.load.image(key, asset.data);
+    }
+    this.load.once(Phaser.Loader.Events.COMPLETE, this.finishMapRetry, this);
+    this.load.start();
+  }
+  private finishMapRetry(): void {
+    this.mapLoading = false;
+    if (!this.mapLoadLeaving && !this.mapReady && this.sys.isActive()) this.create();
+  }
+  private leaveMapLoading(): void {
+    if (this.mapLoading || this.mapReady || this.mapLoadLeaving) return;
+    this.mapLoadLeaving = true; this.scene.start(SCENE.EDITOR);
+  }
+  private destroyMapLoading(): void {
+    this.mapLoadLeaving = true;
+    this.load.off(Phaser.Loader.Events.COMPLETE, this.finishMapRetry, this);
+    this.mapLoadScreen?.destroy(); this.mapLoadScreen = undefined;
+    if (!this.mapReady) {
+      for (const key of this.customTextures.values()) this.textures.remove(key);
+      this.customTextures.clear(); this.assetGeometry.clear();
+    }
+  }
+  private startPlayableMap(): void {
     LevelValidator.validate(this.level.platforms);
     this.physics.world.resume();
     this.lastAttack = -COMBAT.PLAYER_ATTACK_COOLDOWN;
@@ -149,7 +225,12 @@ export class GameScene extends Phaser.Scene {
     this.awakening = this.level.platforms.some((p) => p.awakening) ? new AwakeningWorld(this, this.level, platformBodies,
       this.playerProjectiles, this.effects, () => this.status === 'playing', () => this.combatTime, (x, y) => {
         this.feedback(x, y - 65, '星光唤醒！', 0xffd97d); this.audioManager.play('coin'); this.publishHud();
-      }, (p) => this.drawObjectSkin('platform', p, p.x, p.y, p.width, p.height, -1)) : undefined;
+      }, (p) => {
+        const key = this.skinKey('platform', p), geometry = key && this.assetGeometry.get(key);
+        return key && geometry && this.platformArt ? [this.platformArt.add({ key, geometry,
+          material: materialFor(p.assetId ?? DEFAULT_OBJECT_SKINS.platform, this.customMap?.platformMaterials),
+          x: p.x, y: p.y, width: p.width, height: p.height, depth: -1 })] : [];
+      }) : undefined;
     this.goal = this.physics.add
       .staticImage(this.level.flag.x, this.level.flag.y, 'platform')
       .setOrigin(0, 0)
@@ -281,17 +362,18 @@ export class GameScene extends Phaser.Scene {
   }
   private createBackground(): void {
     const settings = this.customMap?.scene;
-    const bgAsset = this.customMap ? mapAssets(this.customMap).find((asset) => asset.id === settings?.backgroundAssetId) : undefined;
+    const bgAsset = this.customMap ? mapAssets(this.customMap).find((asset) => asset.id === settings?.backgroundAssetId &&
+      this.textures.exists(this.customTextures.get(asset.id) ?? '')) : undefined;
     buildForest(this, this.level, this.customMap?.title, settings?.theme, !!bgAsset || settings?.baseMode === 'sky', settings?.parallax, settings?.layers !== undefined);
     if (settings?.layers) mountSceneLayers(this, settings.layers, this.customTextures);
     if (bgAsset && settings) {
       const key = this.customTextures.get(bgAsset.id);
       if (key && this.textures.exists(key)) {
         if (settings.backgroundMode === 'repeat') {
-          const ratio = 540 / this.textures.get(key).get().cutHeight;
-          const background = this.add.tileSprite(0, 0, this.level.width, 540, key).setOrigin(0)
-            .setDepth(-26).setScrollFactor(settings.parallax);
-          background.setTileScale(ratio, ratio);
+          const frame = this.textures.get(key).get();
+          mountSceneLayers(this, [{ id: 'legacy-background', name: '', assetId: bgAsset.id, group: 'background',
+            mode: 'repeat', x: 0, y: 0, width: frame.cutWidth * 540 / frame.cutHeight, height: 540,
+            parallax: settings.parallax, opacity: 1, visible: true, locked: true }], this.customTextures, -8);
         } else this.add.image(0, 0, key).setOrigin(0).setDisplaySize(this.level.width, 540)
           .setDepth(-26).setScrollFactor(settings.parallax);
       }
@@ -303,7 +385,14 @@ export class GameScene extends Phaser.Scene {
         this.add.image(object.x, object.y, key).setOrigin(0).setDisplaySize(object.width, object.height).setDepth(object.layer === 'front' ? 6 : -1);
     }
     if (this.customMap) {
-      for (const p of this.level.platforms) if (!p.awakening) this.drawObjectSkin('platform', p, p.x, p.y, p.width, p.height, -2);
+      this.platformArt = new ViewportPlatformRenderer(this);
+      for (const p of this.level.platforms) if (!p.awakening) {
+        const key = this.skinKey('platform', p);
+        const geometry = key && this.assetGeometry.get(key);
+        if (key && geometry) this.platformArt.add({ key, geometry, material: materialFor(p.assetId ?? DEFAULT_OBJECT_SKINS.platform, this.customMap.platformMaterials),
+          x: p.x, y: p.y, width: p.width, height: p.height, depth: -2 });
+      }
+      this.platformArt.sync();
       for (const kind of ['spawn', 'checkpoint'] as const) {
         const p = this.level[kind]; this.drawObjectSkin(kind, p, p.x, p.y - 64, 32, 64, -1);
       }

@@ -14,15 +14,17 @@ export function repeatLayerViewport(layer: SceneLayer, camera: { scrollX: number
   return { x, width: camera.width / camera.zoom, tileX: (x - layerScreenX(layer, camera.scrollX)) / (layer.width / sourceWidth) };
 }
 /** 固定数量的绘制节点，不因地图长度增加图片副本。 */
-export function sceneLayersSvg(layers: SceneLayer[], assets: MapAsset[], mapWidth: number, group: SceneLayer['group']): string {
+export function sceneLayersSvg(layers: SceneLayer[], assets: MapAsset[], mapWidth: number, group: SceneLayer['group'],
+  picture?: (asset: MapAsset, width: number, height: number) => string): string {
   return layers.filter((p) => p.group === group && p.visible).map((p) => {
     const asset = assets.find((a) => a.id === p.assetId); if (!asset) return '';
     const id = `scene-layer-${p.id}`;
-    const image = `<image href="${asset.data}" width="${p.width}" height="${p.height}" preserveAspectRatio="none"/>`;
-    const picture = p.mode === 'repeat'
+    const image = picture ? picture(asset, p.width, p.height)
+      : `<image href="${asset.data}" width="${p.width}" height="${p.height}" preserveAspectRatio="none"/>`;
+    const markup = p.mode === 'repeat'
       ? `<defs><pattern id="${id}" x="${p.x}" y="${p.y}" width="${p.width}" height="${p.height}" patternUnits="userSpaceOnUse">${image}</pattern></defs><rect data-layer-repeat="true" x="0" y="${p.y}" width="${mapWidth}" height="${p.height}" fill="url(#${id})"/>`
       : `<g transform="translate(${p.x} ${p.y})">${image}</g>`;
-    return `<g data-scene-layer="${p.id}" data-preview-parallax="${p.parallax}" opacity="${p.opacity}" pointer-events="none">${picture}</g>`;
+    return `<g data-scene-layer="${p.id}" data-preview-parallax="${p.parallax}" opacity="${p.opacity}" pointer-events="none">${markup}</g>`;
   }).join('');
 }
 
@@ -37,7 +39,7 @@ export function forestLayerPreset(): SceneLayer[] {
 }
 
 /** SVG 与 Phaser 共用矩形与视差定义；平铺只覆盖相机可视区域。 */
-export function mountSceneLayers(scene: Phaser.Scene, layers: SceneLayer[], keys: Map<string, string>): void {
+export function mountSceneLayers(scene: Phaser.Scene, layers: SceneLayer[], keys: Map<string, string>, depthOffset = 0): void {
   // CameraManager 的 shutdown 先于场景应用回调执行，会清空 main。
   // 注册和解绑必须使用同一实例，不能在退出时重新查找主相机。
   const camera = scene.cameras.main;
@@ -47,7 +49,7 @@ export function mountSceneLayers(scene: Phaser.Scene, layers: SceneLayer[], keys
   layers.forEach((layer, index) => {
     const key = keys.get(layer.assetId);
     if (!layer.visible || !key || !scene.textures.exists(key)) return;
-    const depth = layerDepth(layer, index);
+    const depth = layerDepth(layer, index) + depthOffset;
     if (layer.mode === 'image') {
       scene.add.image(layer.x, layer.y, key).setOrigin(0).setDisplaySize(layer.width, layer.height)
         .setScrollFactor(layer.parallax, 1).setAlpha(layer.opacity).setDepth(depth);

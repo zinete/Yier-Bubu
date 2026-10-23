@@ -6,10 +6,12 @@ import { runtime, Events } from './helpers/runtime.mjs';
 const source = readFileSync('src/scenes/PreloadScene.ts', 'utf8');
 const mocks = Object.fromEntries([...source.matchAll(/import \w+ from '([^']+\.png)'/g)].map((match) => [match[1], { default: match[1] }]));
 const Phaser = { Scene: class {}, Loader: { Events: { FILE_LOAD_ERROR: 'loaderror', PROGRESS: 'progress' } }, Scenes: { Events: { SHUTDOWN: 'shutdown' } } };
+let touch = false;
 const load = runtime({}, {
   ...mocks, phaser: { default: Phaser },
   '../systems/ViewportManager': { ViewportManager: { attach() {} } },
   '../systems/GeneratedAudio': { generatedAudio: () => ({ music: 'music.wav' }) },
+  '../systems/UILayout': { isTouchPrimaryDevice: () => touch },
 });
 const { PreloadScene } = load('src/scenes/PreloadScene.ts');
 const { SCENE } = load('src/config/constants.ts');
@@ -38,7 +40,8 @@ function scene() {
   return instance;
 }
 let instance = scene();
-assert.equal(instance.queued.length, 24, '只加载 24 项被实际使用的位图（含角色图集）');
+assert.equal(instance.queued.length, 21, 'PC 不下载未使用的摇杆、跳跃与投掷按钮');
+assert.ok(!instance.queued.includes('ui-button-jump'));
 for (const key of instance.queued) if (key !== 'characters') loaded.add(key);
 instance.load.emit('loaderror', { key: 'characters', type: 'image' });
 instance.create();
@@ -58,3 +61,6 @@ assert.equal(instance.started[0], SCENE.START, '音频失败可以无声继续')
 assert.equal(instance.prepared, 2);
 instance.events.emit('shutdown');
 log('preload: missing-image gate, cached retry, audio fallback and cleanup passed');
+touch = true; instance = scene();
+assert.deepEqual(instance.queued.sort(), ['ui-button-jump', 'ui-button-throw', 'ui-joystick-idle']);
+instance.events.emit('shutdown');
