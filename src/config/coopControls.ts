@@ -5,6 +5,6 @@ export const COOP_KEYS = {
 } as const;
 export const COOP_PAUSE_KEY = 'Escape';
 export const COOP_HELP = {
-  p1: 'A / D 移动 · W 跳跃 · E 互动 · F 预留',
-  p2: '← / → 移动 · ↑ 跳跃 · Enter 互动 · 右 Shift 按住托举',
+  p1: 'A / D 移动 · W 跳跃 · E 互动 · F 切换托举',
+  p2: '← / → 移动 · ↑ 跳跃 · Enter 互动 · 右 Shift 切换托举',
 };

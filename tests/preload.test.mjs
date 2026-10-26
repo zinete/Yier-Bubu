@@ -32,7 +32,8 @@ function scene() {
   instance.cache = { audio: { exists: () => false } };
   instance.add = { text: () => new Label() };
   instance.textures = { exists: (key) => loaded.has(key) };
-  instance.anims = { exists: () => false, create() {} };
+  instance.animations = [];
+  instance.anims = { exists: () => false, create: (spec) => instance.animations.push(spec) };
   instance.started = []; instance.restarts = 0; instance.prepared = 0;
   instance.scene = { start: (key) => instance.started.push(key), restart: () => { instance.restarts++; } };
   instance.makeTextures = instance.trimStartCardTextures = () => { instance.prepared++; };
@@ -40,8 +41,10 @@ function scene() {
   return instance;
 }
 let instance = scene();
-assert.equal(instance.queued.length, 21, 'PC 不下载未使用的摇杆、跳跃与投掷按钮');
+assert.equal(instance.queued.length, 23, 'PC 不下载未使用的摇杆、跳跃与投掷按钮');
 assert.ok(!instance.queued.includes('ui-button-jump'));
+assert.ok(instance.queued.includes('coop-lift-yier-source'));
+assert.ok(instance.queued.includes('coop-lift-bubu-source'));
 for (const key of instance.queued) if (key !== 'characters') loaded.add(key);
 instance.load.emit('loaderror', { key: 'characters', type: 'image' });
 instance.create();
@@ -59,6 +62,17 @@ instance.load.emit('loaderror', { key: 'music', type: 'audio' });
 instance.create();
 assert.equal(instance.started[0], SCENE.START, '音频失败可以无声继续');
 assert.equal(instance.prepared, 2);
+const liftStates = ['lift-ready', 'lift-carrying', 'lift-riding', 'lift-boost-jump', 'lift-cancel'];
+for (const key of ['yier', 'bubu'].flatMap((character) => liftStates.map((state) => `${character}-${state}`)))
+  assert.ok(instance.animations.some((animation) => animation.key === key), `缺少托举动画 ${key}`);
+const stableTracks = instance.animations.filter((animation) => /-lift-(carrying|riding)$/.test(animation.key));
+assert.equal(stableTracks.length, 4, '两个角色都能担任托举者或乘坐者');
+for (const animation of stableTracks)
+  assert.equal(animation.frames.map((frame) => frame.frame).join(','), '4,5');
+for (const character of ['yier', 'bubu']) {
+  assert.deepEqual(instance.animations.find((animation) => animation.key === `${character}-lift-boost-jump`).frames.map((frame) => frame.frame), [6]);
+  assert.deepEqual(instance.animations.find((animation) => animation.key === `${character}-lift-cancel`).frames.map((frame) => frame.frame), [7]);
+}
 instance.events.emit('shutdown');
 log('preload: missing-image gate, cached retry, audio fallback and cleanup passed');
 touch = true; instance = scene();

@@ -42,10 +42,34 @@ export function outwardLimit(x: number, otherX: number, safeGrounded: boolean, c
   if (checkpoint && x >= COOP_CHECKPOINT_SPAWNS.p1.x + COOP_DISTANCE.RESPAWN_REACH) return 1;
   return Math.abs(x - otherX) >= COOP_DISTANCE.LIMIT ? Math.sign(x - otherX) : 0;
 }
-export function canCatchLift(rider: Rect & { previousBottom: number; velocityY: number }, support: Rect, solids: Rect[]): boolean {
+export interface LiftCatchOptions {
+  horizontalTolerance?: number;
+  topSlop?: number;
+  minFallSpeed?: number;
+  maxFallSpeed?: number;
+}
+export function canCatchLift(
+  rider: Rect & { previousBottom: number; velocityY: number },
+  support: Rect,
+  solids: Rect[],
+  options: LiftCatchOptions = {},
+): boolean {
+  const horizontalTolerance = options.horizontalTolerance ?? 26;
+  const topSlop = options.topSlop ?? 3;
+  const minFallSpeed = options.minFallSpeed ?? 0;
+  const maxFallSpeed = options.maxFallSpeed ?? Infinity;
   const center = rider.x + rider.width / 2;
-  if (rider.velocityY < 0 || rider.previousBottom > support.y + 3 || Math.abs(center - (support.x + support.width / 2)) > 26) return false;
-  const standing = { x: rider.x, y: support.y - rider.height, width: rider.width, height: rider.height - 0.5 };
+  const currentBottom = rider.y + rider.height;
+  if (rider.velocityY < minFallSpeed || rider.velocityY > maxFallSpeed
+    || rider.previousBottom > support.y + topSlop
+    || currentBottom < support.y - topSlop
+    || Math.abs(center - (support.x + support.width / 2)) > horizontalTolerance) return false;
+  const standing = {
+    x: support.x + support.width / 2 - rider.width / 2,
+    y: support.y - rider.height,
+    width: rider.width,
+    height: rider.height - 0.5,
+  };
   return !solids.some((solid) => intersects(standing, solid));
 }
 export function coopCameraPlan(width: number, height: number, left: number, right: number): { zoom: number; center: number } {

@@ -11,6 +11,8 @@ import selectedCheck from '../assets/start-screen/icons/selected-check.png';
 import doubleHeart from '../assets/start-screen/icons/double-heart.png';
 import yierThumb from '../assets/start-screen/characters/yier-thumb.png';
 import bubuThumb from '../assets/start-screen/characters/bubu-thumb.png';
+import yierLiftSource from '../assets/start-screen/characters/yier-lift-source.png';
+import bubuLiftSource from '../assets/start-screen/characters/bubu-lift-source.png';
 import portraitFrame from '../assets/ui/portrait-frame.png';
 import iconHeartFull from '../assets/ui/icon-heart-full.png';
 import iconHeartEmpty from '../assets/ui/icon-heart-empty.png';
@@ -34,6 +36,7 @@ const IMAGES = [
   ['start-button-primary', startButton], ['start-button-secondary', secondaryButton],
   ['start-selected-check', selectedCheck], ['start-double-heart', doubleHeart],
   ['start-yier-thumb', yierThumb], ['start-bubu-thumb', bubuThumb],
+  ['coop-lift-yier-source', yierLiftSource], ['coop-lift-bubu-source', bubuLiftSource],
   ['ui-portrait-frame', portraitFrame], ['ui-heart-full', iconHeartFull], ['ui-heart-empty', iconHeartEmpty],
   ['ui-star', iconStar], ['ui-coin', iconCoin], ['ui-timer', iconTimer],
   ['ui-button-sound-on', buttonSoundOn], ['ui-button-sound-off', buttonSoundOff],
@@ -103,6 +106,30 @@ export class PreloadScene extends Phaser.Scene {
             frames: indexes.map((index) => ({ key: 'characters', frame: row * 16 + index })),
             frameRate: state === 'run' ? 12 : 7,
             repeat: state === 'hurt' ? 0 : -1,
+          });
+      }
+    const liftFrames = {
+      'lift-ready': { frames: [0, 1], frameRate: 6, repeat: -1 },
+      'lift-catch': { frames: [2, 3], frameRate: 10, repeat: 0 },
+      'lift-hold': { frames: [4, 5], frameRate: 4, repeat: -1 },
+      'lift-takeoff': { frames: [6], frameRate: 8, repeat: 0 },
+      'lift-release': { frames: [7], frameRate: 8, repeat: 0 },
+      // Role-specific semantic aliases. Both characters register every role so
+      // the same cooperation state machine also works in the reverse direction.
+      'lift-carrying': { frames: [4, 5], frameRate: 4, repeat: -1 },
+      'lift-riding': { frames: [4, 5], frameRate: 4, repeat: -1 },
+      'lift-boost-jump': { frames: [6], frameRate: 8, repeat: 0 },
+      'lift-cancel': { frames: [7], frameRate: 8, repeat: 0 },
+    } as const;
+    for (const character of ['yier', 'bubu'] as const)
+      for (const [state, spec] of Object.entries(liftFrames)) {
+        const key = `${character}-${state}`;
+        if (!this.anims.exists(key))
+          this.anims.create({
+            key,
+            frames: spec.frames.map((frame) => ({ key: `${character}-lift-sheet`, frame })),
+            frameRate: spec.frameRate,
+            repeat: spec.repeat,
           });
       }
     this.scene.start(SCENE.START);
@@ -196,6 +223,58 @@ export class PreloadScene extends Phaser.Scene {
       40,
       34,
     );
+    this.makeLiftSheet('yier-lift-sheet', 'coop-lift-yier-source');
+    this.makeLiftSheet('bubu-lift-sheet', 'coop-lift-bubu-source');
+  }
+
+  /**
+   * Image generation keeps the eight poses in a 4×2 contact sheet. Normalize
+   * those cells into the game's existing 128×142 frame contract at load time,
+   * without changing the Player display size, origin or physics body.
+   */
+  private makeLiftSheet(outputKey: string, sourceKey: string): void {
+    if (this.textures.exists(outputKey)) return;
+    const source = this.textures.get(sourceKey).getSourceImage() as HTMLImageElement;
+    const scratch = document.createElement('canvas');
+    scratch.width = source.naturalWidth || source.width;
+    scratch.height = source.naturalHeight || source.height;
+    const scratchContext = scratch.getContext('2d', { willReadFrequently: true });
+    if (!scratchContext || !scratch.width || !scratch.height) return;
+    scratchContext.drawImage(source, 0, 0);
+    const pixels = scratchContext.getImageData(0, 0, scratch.width, scratch.height).data;
+    const columns = 4, rows = 2, frameWidth = 128, frameHeight = 142;
+    const bounds = Array.from({ length: columns * rows }, (_, index) => {
+      const column = index % columns, row = Math.floor(index / columns);
+      const cellX = Math.round(column * scratch.width / columns);
+      const cellY = Math.round(row * scratch.height / rows);
+      const cellRight = Math.round((column + 1) * scratch.width / columns);
+      const cellBottom = Math.round((row + 1) * scratch.height / rows);
+      let left = cellRight, top = cellBottom, right = cellX, bottom = cellY;
+      for (let y = cellY; y < cellBottom; y += 1)
+        for (let x = cellX; x < cellRight; x += 1)
+          if (pixels[(y * scratch.width + x) * 4 + 3] > 12) {
+            left = Math.min(left, x); top = Math.min(top, y);
+            right = Math.max(right, x + 1); bottom = Math.max(bottom, y + 1);
+          }
+      if (right <= left || bottom <= top)
+        return { x: cellX, y: cellY, width: cellRight - cellX, height: cellBottom - cellY };
+      return { x: left, y: top, width: right - left, height: bottom - top };
+    });
+    const maxWidth = Math.max(...bounds.map((box) => box.width));
+    const maxHeight = Math.max(...bounds.map((box) => box.height));
+    const scale = Math.min(118 / maxWidth, 136 / maxHeight);
+    const texture = this.textures.createCanvas(outputKey, frameWidth * bounds.length, frameHeight);
+    if (!texture) return;
+    texture.context.clearRect(0, 0, frameWidth * bounds.length, frameHeight);
+    texture.context.imageSmoothingEnabled = true;
+    bounds.forEach((box, index) => {
+      const width = box.width * scale, height = box.height * scale;
+      const x = index * frameWidth + (frameWidth - width) / 2;
+      const y = frameHeight - height - 2;
+      texture.context.drawImage(source, box.x, box.y, box.width, box.height, x, y, width, height);
+      texture.add(index, 0, index * frameWidth, 0, frameWidth, frameHeight);
+    });
+    texture.refresh();
   }
 
   private trimStartCardTextures(): void {

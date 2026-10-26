@@ -8,8 +8,9 @@ import { canLandOnPlatform } from '../systems/PlatformPhysics';
 import { CoopKeyboard, editableTarget } from '../systems/CoopKeyboard';
 import { CoopOverlay, type CoopPhase } from '../systems/CoopOverlay';
 import { CoopRules, COOP_DISTANCE, inside, interactionTarget, intersects, outwardLimit, type CoopFact, type Rect } from '../systems/CoopRules';
-import { LiftSupport } from '../systems/LiftSupport';
 import { CoopCamera } from '../systems/CoopCamera';
+import { CoopLiftAnimator } from '../systems/CoopLiftAnimator';
+import { PlayerCooperationController } from '../systems/PlayerCooperationController';
 import type { PlayerId } from '../types/commands';
 import { openEffectPanel } from '../systems/EffectPanel';
 import { openFeedback } from '../systems/ReleaseSupport';
@@ -29,7 +30,8 @@ export class CoopScene extends Phaser.Scene {
   private controls!: CoopKeyboard;
   private overlay!: CoopOverlay;
   private audio!: AudioManager;
-  private lift!: LiftSupport;
+  private lift!: PlayerCooperationController;
+  private liftAnimator!: CoopLiftAnimator;
   private sharedCamera!: CoopCamera;
   private rules = new CoopRules();
   private terrain = new Map<string, Terrain>();
@@ -67,8 +69,24 @@ export class CoopScene extends Phaser.Scene {
         this.physics.add.collider(actor, image, undefined, () => !oneWay || canLandOnPlatform(actor.arcadeBody.velocity.y, actor.arcadeBody.prev.y + actor.arcadeBody.height, (image.body as Phaser.Physics.Arcade.StaticBody).top));
       return [id, { id, actor, label, spawn, life: 'normal', reviveAt: 0, moved: false, jumped: false, falls: 0 }];
     })) as Record<PlayerId, Partner>;
-    // No character-to-character collider: support exists only through LiftSupport.
-    this.lift = new LiftSupport(this, this.partners.p1.actor, this.partners.p2.actor, () => this.solids());
+    // No character-to-character collider: the unique cooperation relation owns
+    // a rider only while an intentional top-down landing is active.
+    this.lift = new PlayerCooperationController(
+      Object.fromEntries(ids.map((id) => [id, this.partners[id].actor])) as Record<PlayerId, Player>,
+      {
+        solids: () => this.solids(),
+        isAvailable: (id) => this.partners[id].life === 'normal',
+        isGrounded: (id) => {
+          const body = this.partners[id].actor.arcadeBody;
+          return body.enable && body.velocity.y >= 0 && (body.blocked.down || body.touching.down);
+        },
+        isSafeGround: (id) => this.safeGround(this.partners[id].actor),
+      },
+    );
+    this.liftAnimator = new CoopLiftAnimator(
+      Object.fromEntries(ids.map((id) => [id, this.partners[id].actor])) as Record<PlayerId, Player>,
+      this.lift,
+    );
     this.sharedCamera = new CoopCamera(this, ids.map((id) => this.partners[id].actor.x), coopTutorial.width);
     this.createLandmarks();
     const root = document.getElementById('app')!;
@@ -106,7 +124,7 @@ export class CoopScene extends Phaser.Scene {
       padding: { x: 10, y: 7 },
     }).setOrigin(0.5).setDepth(1);
     sign(220, 310, '1 · 试试各自的跑跳');
-    sign(555, 210, '2 · 布布按住右 Shift\n一二跳上托举点，再按 W');
+    sign(555, 210, '2 · F / 右 Shift 切换托举\n队友从上方落下，再借力跳');
     sign(740, 200, '3 · 开桥机关');
     sign(1220, 305, '4 · 每只熊站一个开关');
     sign(1545, 310, '5 · 一起到营地');
@@ -135,9 +153,10 @@ export class CoopScene extends Phaser.Scene {
       if (p.life === 'respawning' && this.clock >= p.reviveAt) this.revive(p);
     }
     const commands = { p1: this.controls.read('p1'), p2: this.controls.read('p2') };
-    this.lift.prepare(commands.p2.skillHeld, this.safeGround(this.partners.p2.actor), ids.every((id) => this.partners[id].life === 'normal'));
+    const cooperation = this.lift.prepare(this.clock, commands);
     for (const id of ids) {
-      const p = this.partners[id], other = this.partners[id === 'p1' ? 'p2' : 'p1'], command = commands[id];
+      const p = this.partners[id], other = this.partners[id === 'p1' ? 'p2' : 'p1'];
+      const plan = cooperation[id], command = plan.command;
       if (p.life !== 'normal') continue;
       const body = p.actor.arcadeBody;
       const restricted = outwardLimit(body.center.x, other.life === 'normal' ? other.actor.arcadeBody.center.x : other.spawn.x, this.safeGround(p.actor), this.rules.checkpointActive);
@@ -145,13 +164,11 @@ export class CoopScene extends Phaser.Scene {
         if (Math.sign(command.moveX) === restricted) command.moveX = 0;
         if (Math.sign(body.velocity.x) === restricted) body.setVelocityX(0);
       }
-      if (id === 'p2' && this.lift.active) {
-        command.moveX = 0; command.jumpPressed = command.jumpHeld = false;
-        p.actor.clearJumpMemory(); body.setVelocityX(0);
+      if (plan.skipPhysics) continue;
+      if (p.actor.applyCommand(this.clock, command, plan.movementScale)) {
+        p.jumped = true;
       }
-      if (p.actor.applyCommand(this.clock, command)) {
-        p.jumped = true; if (id === 'p1') this.lift.takeOff();
-      }
+      p.jumped ||= plan.boosted;
       p.moved ||= Math.abs(body.center.x - COOP_SPAWNS[id].x) > 50;
       const target = interactionTarget(this.fact(p), this.rules.bridgeOpen ? [] : [COOP_LEVER]);
       if (command.interactPressed && target && this.rules.interact(target.id)) {
@@ -171,7 +188,7 @@ export class CoopScene extends Phaser.Scene {
       this.say('共同检查点已激活，掉落后各自回到营地。'); this.audio.play('coin');
     }
     if (won) {
-      this.phase = 'won'; this.controls.reset(); this.lift.stop();
+      this.phase = 'won'; this.controls.reset(); this.lift.stop(); this.liftAnimator.reset();
       this.physics.world.pause(); this.audio.setMusicPaused(true); this.audio.play('win');
     }
     this.plates.forEach((plate, i) => plate.setFillStyle(this.rules.plates[i] ? 0xffd56f : 0xb9a2d0));
@@ -182,7 +199,7 @@ export class CoopScene extends Phaser.Scene {
   private fact(p: Partner): CoopFact {
     const b = p.actor.arcadeBody;
     return { id: p.id, x: b.center.x, feet: b.bottom, grounded: b.blocked.down || b.touching.down,
-      normal: p.life === 'normal' && !(p.id === 'p1' ? this.lift.supported : this.lift.active) };
+      normal: p.life === 'normal' && this.lift.canUseWorldTrigger(p.id) };
   }
   private solids(): Rect[] { return [...this.terrain.values()].filter((t) => t.image.body?.enable).map((t) => t.rect); }
   private safeGround(player: Player): boolean {
@@ -192,7 +209,7 @@ export class CoopScene extends Phaser.Scene {
   }
   private openDoor(id: string): void { this.terrain.get(id)!.image.disableBody(true, true); }
   private fall(p: Partner): void {
-    this.lift.stop(); p.life = 'respawning'; p.reviveAt = this.clock + 450; p.falls++;
+    this.lift.releasePlayer(p.id); this.liftAnimator.update(); p.life = 'respawning'; p.reviveAt = this.clock + 450; p.falls++;
     p.actor.arcadeBody.stop(); p.actor.arcadeBody.enable = false; p.actor.setVisible(false);
     p.actor.clearJumpMemory(); this.controls.reset(p.id); this.say(`${p.id.toUpperCase()} 正在回到安全营地，另一只熊可以继续。`);
   }
@@ -205,14 +222,22 @@ export class CoopScene extends Phaser.Scene {
         && !this.solids().some((s) => intersects(box, s));
     });
     if (x === undefined) return;
-    this.controls.reset(p.id); this.lift.stop(); p.actor.resetAt(x, p.spawn.y - 2); p.life = 'normal';
+    this.controls.reset(p.id); this.lift.releasePlayer(p.id); this.liftAnimator.update(); p.actor.resetAt(x, p.spawn.y - 2); p.life = 'normal';
   }
   private afterPhysics(): void {
     if (!this.partners || this.leaving) return;
+    this.lift.afterPhysics(this.clock);
+    this.liftAnimator.update();
     for (const id of ids) {
       const p = this.partners[id];
       p.label.setPosition(p.actor.x, p.actor.y - 104).setVisible(p.life === 'normal');
-      p.label.setText(id === 'p1' && this.lift.supported ? 'P1 · 站稳了 · W 起跳' : id === 'p2' && this.lift.active ? 'P2 · 托举中' : id.toUpperCase());
+      const state = this.lift.stateOf(id);
+      const jump = id === 'p1' ? 'W' : '↑';
+      p.label.setText(state === 'RIDING' ? `${id.toUpperCase()} · 站稳 · ${jump} 借力跳`
+        : state === 'CARRYING' ? `${id.toUpperCase()} · 托举中`
+          : state === 'LIFT_READY' ? `${id.toUpperCase()} · 托举准备`
+            : state === 'BOOST_JUMP' ? `${id.toUpperCase()} · 借力跳`
+              : id.toUpperCase());
     }
     this.sharedCamera.update(ids.map((id) => {
       const p = this.partners[id]; return p.life === 'normal' ? p.actor.x : p.spawn.x;
@@ -228,7 +253,7 @@ export class CoopScene extends Phaser.Scene {
     let hint = '';
     if (this.phase === 'ready') {
       status = this.ready.every(Boolean) ? '两人已就绪，请松开按键后出发。' : '两人各按一次准备键。';
-      hint = '同一键盘，共享画面 · Esc 暂停\n布布在地面按住右 Shift，一二跳到头顶后可再次正常起跳。';
+      hint = '同一键盘，共享画面 · Esc 暂停\n一二按 F、布布按右 Shift 切换托举；队友从上方落下后可借力跳。';
     } else if (this.phase === 'paused') {
       status = '按键已清空，准备好后再继续。'; hint = '按 Esc 或点击继续冒险。';
     } else if (this.phase === 'won') {
@@ -240,8 +265,13 @@ export class CoopScene extends Phaser.Scene {
       const selected = ids.filter((id) => interactionTarget(this.fact(this.partners[id]), this.rules.bridgeOpen ? [] : [COOP_LEVER]));
       if (selected.length) hint = selected.map((id) => `${id.toUpperCase()} 按 ${id === 'p1' ? 'E' : 'Enter'} 打开桥梁`).join(' · ');
       else if (this.lift.blockedAbove) hint = '头顶空间不足，请换到开阔地面托举。';
-      else if (this.lift.supported) hint = '一二已站稳：按 W 从托举点起跳。布布保持右 Shift。';
-      else if (!this.rules.bridgeOpen) hint = '布布在高台左侧按住右 Shift，一二从上方落到托举点。';
+      else if (this.lift.supported) {
+        const rider = this.lift.riderId!;
+        hint = `${rider.toUpperCase()} 已站稳：按 ${rider === 'p1' ? 'W' : '↑'} 借力起跳；托举者可以慢速移动。`;
+      } else if (this.lift.active) {
+        const ready = ids.filter((id) => this.lift.stateOf(id) === 'LIFT_READY').map((id) => id.toUpperCase()).join('、');
+        hint = `${ready} 已准备托举，队友需要从正上方落到头顶；再次按技能键可取消。`;
+      } else if (!this.rules.bridgeOpen) hint = '任意一人先切换托举准备，另一人从上方落下并借力登上高台。';
       else if (!this.rules.gateOpen) hint = '每人站一个紫色压力开关，门开启后会保持开放。';
       else if (!this.rules.checkpointActive) hint = '两人同时走进蓝色营地，激活检查点后再向前。';
       else hint = '跨过小坑，两人同时进入金色终点区。';
@@ -250,12 +280,12 @@ export class CoopScene extends Phaser.Scene {
       else if (!status) status = `跑跳练习 ${ids.filter((id) => this.partners[id].moved && this.partners[id].jumped).length}/2 · ${this.rules.checkpointActive ? '营地已激活 ✓' : this.rules.gateOpen ? '双机关完成 ✓' : this.rules.bridgeOpen ? '桥梁已开启 ✓' : '一起去高台开桥'}`;
     }
     this.overlay.render({ phase: this.phase, ready: this.ready, status, hint, players: ids.map((id) =>
-      `${id.toUpperCase()} ${id === 'p1' ? '一二 · A/D W E' : '布布 · ←/→ ↑ Enter'}${this.partners[id].life === 'respawning' ? ' · 复活中' : ''}`) });
+      `${id.toUpperCase()} ${id === 'p1' ? '一二 · A/D W E F' : '布布 · ←/→ ↑ Enter 右Shift'}${this.partners[id].life === 'respawning' ? ' · 复活中' : ''}`) });
   }
   private togglePause(): void {
     if (this.leaving || (this.phase !== 'playing' && this.phase !== 'paused')) return;
     this.phase = this.phase === 'playing' ? 'paused' : 'playing';
-    this.controls.reset(); this.lift.stop();
+    this.controls.reset(); this.lift.stop(); this.liftAnimator.reset();
     ids.forEach((id) => { this.partners[id].actor.clearJumpMemory(); this.partners[id].actor.arcadeBody.setAccelerationX(0); });
     this.physics.world.isPaused = this.phase === 'paused'; this.audio.setMusicPaused(this.phase === 'paused');
     this.renderOverlay();
@@ -270,11 +300,11 @@ export class CoopScene extends Phaser.Scene {
   private onJump(): void { this.audio.play('jump'); }
   private navigate(restart: boolean): void {
     if (this.leaving) return;
-    this.leaving = true; this.controls.reset(); this.lift.stop();
+    this.leaving = true; this.controls.reset(); this.lift.stop(); this.liftAnimator.reset();
     if (restart) this.scene.restart(); else this.scene.start(SCENE.START);
   }
   private cleanup(): void {
-    this.leaving = true; this.controls?.destroy(); this.lift?.destroy(); this.overlay?.destroy();
+    this.leaving = true; this.liftAnimator?.reset(); this.controls?.destroy(); this.lift?.destroy(); this.overlay?.destroy();
     this.input.off('pointerdown', this.focusCanvas, this);
     this.game.events.off('blur', this.unfocus, this); this.game.events.off('hidden', this.unfocus, this);
     this.game.events.off('player-jump', this.onJump, this);

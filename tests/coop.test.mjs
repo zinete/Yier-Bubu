@@ -5,6 +5,7 @@ import { coopRuntime } from './helpers/coop-runtime.mjs';
 
 const load = runtime();
 const { CoopRules, canCatchLift, interactionTarget, outwardLimit, coopCameraPlan } = load('src/systems/CoopRules.ts');
+const { COOP_LIFT } = load('src/config/coopLift.ts');
 const { NORMAL_JUMP_HEIGHT, COOP_HIGH_RISE, COOP_BRIDGE, COOP_GATE, COOP_GATHER_GATE } = load('src/levels/coopTutorial.ts');
 assert.ok(NORMAL_JUMP_HEIGHT > 119 && NORMAL_JUMP_HEIGHT < 121);
 assert.ok(COOP_HIGH_RISE > NORMAL_JUMP_HEIGHT + 40);
@@ -12,6 +13,7 @@ const rider = { x: 500, y: 270, width: 74, height: 83, previousBottom: 354, velo
 const support = { x: 510, y: 356, width: 56, height: 8 };
 assert.equal(canCatchLift(rider, support, []), true);
 assert.equal(canCatchLift({ ...rider, velocityY: -10 }, support, []), false);
+assert.equal(canCatchLift({ ...rider, velocityY: 900 }, support, [], { maxFallSpeed: 780 }), false, '高速坠落不强制吸附');
 assert.equal(canCatchLift({ ...rider, previousBottom: 380 }, support, []), false);
 assert.equal(canCatchLift({ ...rider, x: 100 }, support, []), false);
 assert.equal(canCatchLift(rider, support, [{ x: 480, y: 250, width: 150, height: 50 }]), false);
@@ -69,8 +71,13 @@ run.close();
 // Full tutorial driven by semantic keyboard commands through real Arcade steps.
 run = coopRuntime(); ({ scene, key, tick, setKeys } = run); run.start();
 const actor = (id) => scene.partners[id].actor;
+const keysFor = {
+  p1: { left: 'KeyA', right: 'KeyD', jump: 'KeyW', skill: 'KeyF' },
+  p2: { left: 'ArrowLeft', right: 'ArrowRight', jump: 'ArrowUp', skill: 'ShiftRight' },
+};
+function press(code) { key(code, true); tick(); key(code, false); tick(); }
 function walk(id, target, keep = []) {
-  const right = id === 'p1' ? 'KeyD' : 'ArrowRight', left = id === 'p1' ? 'KeyA' : 'ArrowLeft';
+  const { right, left } = keysFor[id];
   for (let i = 0; i < 600 && scene.phase === 'playing'; i++) {
     const b = actor(id).arcadeBody, error = target - b.center.x;
     const direction = Math.abs(error) < 18 ? 0 : Math.sign(error);
@@ -80,16 +87,34 @@ function walk(id, target, keep = []) {
   assert.fail(`walk ${id} to ${target} stalled at ${actor(id).x}, phase ${scene.phase}`);
 }
 walk('p2', 550); walk('p1', actor('p2').arcadeBody.center.x);
-setKeys(['ShiftRight']); tick(3); assert.equal(scene.lift.active, true);
-setKeys(['ShiftRight', 'KeyW']); tick(55);
+press('ShiftRight'); assert.equal(scene.lift.active, true);
+assert.equal(scene.lift.stateOf('p2'), 'LIFT_READY');
+assert.equal(actor('p2').actionAnimationKey, 'bubu-lift-ready');
+assert.equal(actor('p1').actionAnimationKey, null);
+setKeys(['KeyW']);
+for (let i = 0; i < 100 && !scene.lift.supported; i++) tick();
 assert.equal(scene.lift.supported, true, `P1 should land on support: feet=${actor('p1').arcadeBody.bottom}`);
+assert.equal(scene.lift.carrierId, 'p2'); assert.equal(scene.lift.riderId, 'p1');
+assert.equal(actor('p1').actionAnimationKey, 'yier-lift-riding');
+assert.equal(actor('p2').actionAnimationKey, 'bubu-lift-carrying');
 const supportedY = actor('p1').arcadeBody.bottom;
+const supportedBody = [actor('p1').arcadeBody.width, actor('p1').arcadeBody.height,
+  actor('p1').arcadeBody.offset.x, actor('p1').arcadeBody.offset.y];
+setKeys([]);
 tick(90); assert.ok(Math.abs(actor('p1').arcadeBody.bottom - supportedY) < 0.01, '站立不抖动');
-setKeys(['ShiftRight']); tick();
-setKeys(['ShiftRight', 'KeyW', 'KeyD']); tick(25);
-setKeys(['ShiftRight', 'KeyW']); tick(40);
-assert.ok(Math.abs(actor('p1').arcadeBody.bottom - 268) < 1, '沿用普通跳速从托举点到高台');
-walk('p1', 740, ['ShiftRight']); setKeys(['ShiftRight', 'KeyE']); tick(); setKeys([]); tick();
+assert.deepEqual([actor('p1').arcadeBody.width, actor('p1').arcadeBody.height,
+  actor('p1').arcadeBody.offset.x, actor('p1').arcadeBody.offset.y], supportedBody, '动作帧不改变碰撞框');
+setKeys(['KeyW', 'KeyD']); tick();
+assert.equal(scene.lift.stateOf('p1'), 'BOOST_JUMP');
+assert.equal(scene.lift.stateOf('p2'), 'LIFT_READY');
+assert.ok(Math.abs(actor('p1').arcadeBody.velocity.y - scene.lift.boostJumpVelocity) < 0.01);
+assert.equal(actor('p1').actionAnimationKey, 'yier-lift-boost-jump');
+assert.equal(actor('p2').actionAnimationKey, 'bubu-lift-ready');
+tick(24);
+setKeys([]);
+for (let i = 0; i < 120 && !actor('p1').arcadeBody.blocked.down; i++) tick();
+assert.ok(Math.abs(actor('p1').arcadeBody.bottom - 268) < 1, '借力跳从托举点到达高台');
+walk('p1', 740); setKeys(['KeyE']); tick(); setKeys([]); tick();
 assert.equal(scene.rules.bridgeOpen, true); assert.equal(scene.terrain.get(COOP_BRIDGE.id).image.body.enable, true);
 // Bubu can follow using the permanently opened bridge and two ordinary jumps.
 setKeys(['ArrowUp']); tick(55); setKeys([]); tick();
@@ -118,47 +143,108 @@ tick(60); assert.equal(scene.audio.sounds.filter((s) => s === 'win').length, 1);
 scene.navigate(true); scene.navigate(true); assert.equal(scene.calls.length, 1);
 run.close();
 
-// Physical lift boundaries use actual bodies, including release, side entry,
-// insufficient headroom and removing either participant during support.
-run = coopRuntime(); ({ scene, tick, setKeys } = run); run.start();
-const p1 = scene.partners.p1.actor, p2 = scene.partners.p2.actor;
-const settle = () => { setKeys([]); p1.resetAt(550, 442); p2.resetAt(550, 442); tick(12); };
-settle(); setKeys(['ShiftRight']); tick(15);
-assert.equal(scene.lift.active, true);
-assert.equal(scene.lift.supported, false, '从布布下方或重叠位置不能吸附');
-assert.ok(p1.arcadeBody.bottom > scene.lift.surface.body.top + 70);
-setKeys(['ShiftRight', 'KeyW']); tick(55);
-assert.equal(scene.lift.supported, true);
-setKeys([]); tick(40);
-assert.equal(scene.lift.active || scene.lift.supported, false);
-assert.ok(Math.abs(p1.arcadeBody.bottom - 444) < 1, '松键后自然回到安全地面');
-settle(); setKeys(['ShiftRight', 'KeyW']); tick(55);
-setKeys(['ShiftRight', 'KeyD']); tick(25);
-assert.equal(scene.lift.supported, false, '走出托举范围立即解除支撑');
-setKeys([]); tick(40);
-assert.ok(Math.abs(p1.arcadeBody.bottom - 444) < 1);
-settle();
+// The same state machine must work in both directions. These cases use real
+// Arcade bodies and exercise toggle, catch, follow, boost and cleanup.
+run = coopRuntime(); ({ scene, key, tick, setKeys } = run); run.start();
+const pair = (carrierId) => ({ carrierId, riderId: carrierId === 'p1' ? 'p2' : 'p1' });
+const settlePair = (x = 550) => {
+  setKeys([]); scene.lift.reset(); scene.liftAnimator.update();
+  actor('p1').resetAt(x, 442); actor('p2').resetAt(x, 442); tick(12);
+};
+function catchRider(carrierId) {
+  const { riderId } = pair(carrierId);
+  settlePair(); press(keysFor[carrierId].skill);
+  assert.equal(scene.lift.stateOf(carrierId), 'LIFT_READY');
+  setKeys([keysFor[riderId].jump]);
+  for (let i = 0; i < 110 && !scene.lift.supported; i++) tick();
+  assert.equal(scene.lift.carrierId, carrierId, `${carrierId} 可以托举 ${riderId}`);
+  assert.equal(scene.lift.riderId, riderId);
+  setKeys([]); tick();
+  return { carrierId, riderId, carrier: actor(carrierId), rider: actor(riderId) };
+}
+
+for (const carrierId of ['p1', 'p2']) {
+  const { riderId } = pair(carrierId), skill = keysFor[carrierId].skill;
+  settlePair();
+  key(skill, true); tick();
+  assert.equal(scene.lift.stateOf(carrierId), 'LIFT_READY');
+  assert.equal(actor(carrierId).actionAnimationKey, `${actor(carrierId).characterId}-lift-ready`);
+  key(skill, true, true); tick();
+  assert.equal(scene.lift.stateOf(carrierId), 'LIFT_READY', '按键 repeat 不重复切换');
+  key(skill, false); tick();
+  setKeys([keysFor[carrierId].jump]); tick(6);
+  assert.ok(actor(carrierId).arcadeBody.velocity.y >= 0, '托举准备期间禁止普通跳跃');
+  setKeys([]); press(skill);
+  assert.equal(scene.lift.stateOf(carrierId), 'LIFT_CANCEL');
+  assert.equal(actor(carrierId).actionAnimationKey, `${actor(carrierId).characterId}-lift-cancel`);
+  tick(14); assert.equal(scene.lift.stateOf(carrierId), 'NORMAL');
+
+  const relation = catchRider(carrierId);
+  const originalBody = [relation.rider.arcadeBody.width, relation.rider.arcadeBody.height,
+    relation.rider.arcadeBody.offset.x, relation.rider.arcadeBody.offset.y];
+  const initialOffset = relation.rider.arcadeBody.center.x - relation.carrier.arcadeBody.center.x;
+  setKeys([keysFor[carrierId].right]); tick(70);
+  assert.equal(scene.lift.stateOf(carrierId), 'CARRYING');
+  assert.equal(scene.lift.stateOf(riderId), 'RIDING');
+  assert.ok(relation.carrier.arcadeBody.velocity.x > 0, '托举者仍可跟随移动');
+  assert.ok(relation.carrier.arcadeBody.velocity.x <= 300 * COOP_LIFT.carryingSpeedScale + 0.01, '托举移动有稳定速度上限');
+  assert.ok(Math.abs(relation.rider.arcadeBody.center.x - relation.carrier.arcadeBody.center.x - initialOffset) < 0.01, '乘坐者水平稳定跟随');
+  assert.ok(Math.abs(relation.rider.arcadeBody.bottom - (relation.carrier.arcadeBody.top - COOP_LIFT.headGap)) < 0.01, '脚底与头顶间距稳定');
+  assert.deepEqual([relation.rider.arcadeBody.width, relation.rider.arcadeBody.height,
+    relation.rider.arcadeBody.offset.x, relation.rider.arcadeBody.offset.y], originalBody, '托举动画和同步不改变碰撞框');
+  setKeys([]); press(skill);
+  assert.equal(scene.lift.relation, null); assert.equal(scene.lift.stateOf(carrierId), 'LIFT_CANCEL');
+  assert.equal(relation.rider.arcadeBody.enable, true, '取消托举恢复乘坐者物理体');
+  tick(35); assert.ok(Math.abs(relation.rider.arcadeBody.bottom - 444) < 1, '取消后安全落地');
+
+  const boosted = catchRider(carrierId);
+  const jumpsBefore = scene.audio.sounds.filter((sound) => sound === 'jump').length;
+  key(keysFor[riderId].jump, true); tick();
+  assert.equal(scene.lift.relation, null); assert.equal(scene.lift.stateOf(carrierId), 'LIFT_READY');
+  assert.equal(scene.lift.stateOf(riderId), 'BOOST_JUMP');
+  assert.ok(Math.abs(boosted.rider.arcadeBody.velocity.y - scene.lift.boostJumpVelocity) < 0.01, '借力跳仅施加一次配置速度');
+  assert.equal(scene.audio.sounds.filter((sound) => sound === 'jump').length, jumpsBefore + 1);
+  key(keysFor[riderId].jump, false); tick(8);
+  const fallingAwayFromImpulse = boosted.rider.arcadeBody.velocity.y;
+  key(keysFor[riderId].jump, true); tick();
+  assert.ok(boosted.rider.arcadeBody.velocity.y > scene.lift.boostJumpVelocity, '空中重复按跳不能叠加借力速度');
+  assert.ok(boosted.rider.arcadeBody.velocity.y >= fallingAwayFromImpulse - 40, '重复按键没有第二次向上冲量');
+  key(keysFor[riderId].jump, false); tick(40);
+
+  const fallingCarrier = catchRider(carrierId);
+  scene.fall(scene.partners[carrierId]);
+  assert.equal(scene.lift.relation, null); assert.equal(scene.lift.stateOf(riderId), 'NORMAL');
+  assert.equal(fallingCarrier.rider.arcadeBody.enable, true, '托举者掉落立即归还乘坐者物理体');
+  assert.equal(fallingCarrier.rider.actionAnimationKey, null);
+  tick(65); assert.equal(scene.partners[carrierId].life, 'normal');
+
+  const fallingRider = catchRider(carrierId);
+  scene.fall(scene.partners[riderId]);
+  assert.equal(scene.lift.relation, null); assert.equal(scene.lift.stateOf(carrierId), 'NORMAL');
+  assert.equal(fallingRider.carrier.actionAnimationKey, null);
+  tick(65); assert.equal(scene.partners[riderId].life, 'normal');
+
+  catchRider(carrierId); scene.togglePause();
+  assert.equal(scene.phase, 'paused'); assert.equal(scene.lift.relation, null);
+  assert.equal(scene.lift.stateOf('p1'), 'NORMAL'); assert.equal(scene.lift.stateOf('p2'), 'NORMAL');
+  assert.equal(actor(riderId).arcadeBody.enable, true, '暂停清理乘坐状态');
+  scene.togglePause(); tick();
+}
+
+settlePair(); setKeys(['KeyF', 'ShiftRight']); tick(); setKeys([]); tick();
+assert.equal(scene.lift.stateOf('p1'), 'LIFT_READY'); assert.equal(scene.lift.stateOf('p2'), 'LIFT_READY');
+assert.equal(scene.lift.relation, null, '双方同时准备不会形成循环引用');
+scene.lift.reset(); scene.liftAnimator.update();
+
+settlePair();
 const ceiling = scene.addTerrain('test-ceiling', { x: 490, y: 290, width: 120, height: 20 }, false, false);
-setKeys(['ShiftRight']); tick(5);
-assert.equal(scene.lift.blockedAbove, true); assert.equal(scene.lift.active, false);
-assert.ok(p1.arcadeBody.bottom > ceiling.rect.y + ceiling.rect.height);
+press('ShiftRight'); assert.equal(scene.lift.blockedFor('p2'), true);
+setKeys(['KeyW']); tick(70); setKeys([]);
+assert.equal(scene.lift.relation, null, '头顶空间不足不能把队友抬进地形');
 ceiling.image.body.enable = false;
-setKeys(['ShiftRight', 'KeyW']); tick(55);
-assert.equal(scene.lift.supported, true);
-const supportTop = scene.lift.surface.body.top;
-setKeys(['ShiftRight']); tick(); setKeys(['ShiftRight', 'KeyW']); tick();
-assert.equal(p1.arcadeBody.velocity.y, -590, '托举起跳只赋予一次原有跳速');
-tick(8); setKeys(['ShiftRight']); tick(); setKeys(['ShiftRight', 'KeyW']); tick();
-assert.ok(p1.arcadeBody.velocity.y > -590, '空中重复按跳不能叠加起跳速度');
-assert.ok(p1.arcadeBody.bottom < supportTop);
-settle(); setKeys(['ShiftRight', 'KeyW']); tick(55);
-scene.fall(scene.partners.p2); assert.equal(scene.lift.active || scene.lift.supported, false);
-setKeys([]); tick(65);
-assert.equal(scene.partners.p2.life, 'normal'); assert.equal(p1.arcadeBody.enable, true);
-assert.ok(Math.abs(p1.arcadeBody.bottom - 444) < 1, '托举者掉落不会卡住被托举者');
 scene.fall(scene.partners.p1); scene.fall(scene.partners.p2); tick(65);
 assert.equal(scene.partners.p1.life, 'normal'); assert.equal(scene.partners.p2.life, 'normal');
-assert.ok(Math.abs(p1.x - p2.x) >= 85, '两人同时复活仍保持安全间距');
+assert.ok(Math.abs(actor('p1').x - actor('p2').x) >= 85, '两人同时复活仍保持安全间距');
 assert.equal(scene.rules.bridgeOpen || scene.rules.gateOpen || scene.rules.checkpointActive, false);
 run.close();
 
@@ -197,20 +283,32 @@ for (const [width, height] of [[800, 600], [1920, 1080], [2560, 1080], [640, 360
 }
 run.close();
 
-// Render and fixed physics rates differ on real PCs. Support must stay stable
-// when there are either two physics steps or no physics step per render frame.
-for (const hz of [30, 120]) {
-  run = coopRuntime(); ({ scene, setKeys } = run);
-  const step = (seconds) => run.tick(Math.round(seconds * hz), 1000 / hz);
+// Arcade's fixed step produces zero, one or multiple physics steps per render
+// frame at these rates. Both directions must remain attached while moving.
+for (const hz of [30, 60, 120]) for (const carrierId of ['p1', 'p2']) {
+  run = coopRuntime(); ({ scene, key, setKeys } = run);
+  const step = (seconds) => run.tick(Math.max(1, Math.round(seconds * hz)), 1000 / hz);
   setKeys(['KeyE', 'Enter']); step(0.1); setKeys([]); step(0.25);
+  const riderId = carrierId === 'p1' ? 'p2' : 'p1';
+  const carrierKeys = keysFor[carrierId], riderKeys = keysFor[riderId];
   scene.partners.p1.actor.resetAt(550, 442); scene.partners.p2.actor.resetAt(550, 442); step(0.25);
-  setKeys(['ShiftRight', 'KeyW']); step(1.2);
-  assert.equal(scene.lift.supported, true, `${hz}Hz 托举接触`);
-  const feet = scene.partners.p1.actor.arcadeBody.bottom;
-  step(1.5);
-  assert.ok(Math.abs(scene.partners.p1.actor.arcadeBody.bottom - feet) < 0.01, `${hz}Hz 托举站稳`);
-  setKeys([]); step(1); assert.equal(scene.lift.supported || scene.lift.active, false);
-  assert.ok(Math.abs(scene.partners.p1.actor.arcadeBody.bottom - 444) < 1, `${hz}Hz 松键安全落地`);
+  key(carrierKeys.skill, true); step(0.04); key(carrierKeys.skill, false); step(0.04);
+  assert.equal(scene.lift.stateOf(carrierId), 'LIFT_READY', `${hz}Hz ${carrierId} 按键切换准备`);
+  key(riderKeys.jump, true);
+  for (let i = 0; i < Math.ceil(hz * 1.5) && !scene.lift.supported; i++) step(1 / hz);
+  assert.equal(scene.lift.carrierId, carrierId, `${hz}Hz ${carrierId} 双向托举接触`);
+  key(riderKeys.jump, false); step(0.05);
+  setKeys([carrierKeys.right]); step(1.5);
+  const carrier = scene.partners[carrierId].actor.arcadeBody;
+  const riderBody = scene.partners[riderId].actor.arcadeBody;
+  assert.equal(scene.lift.supported, true, `${hz}Hz 移动中保持托举`);
+  assert.ok(Math.abs(riderBody.center.x - carrier.center.x) < 0.01, `${hz}Hz 水平跟随无漂移`);
+  assert.ok(Math.abs(riderBody.bottom - (carrier.top - COOP_LIFT.headGap)) < 0.01, `${hz}Hz 头顶间距无抖动`);
+  setKeys([]); key(riderKeys.jump, true); step(1 / hz);
+  assert.equal(scene.lift.stateOf(riderId), 'BOOST_JUMP', `${hz}Hz 借力跳只消费新按下沿`);
+  assert.equal(scene.lift.relation, null);
+  assert.ok(scene.partners[riderId].actor.arcadeBody.velocity.y < -590, `${hz}Hz 借力高度高于普通跳`);
+  key(riderKeys.jump, false); step(0.8);
   run.close();
 }
-log('co-op: independent input, readiness, lift stability, complete tutorial, checkpoint/fall and one-shot finish passed using real Arcade CPU physics');
+log('co-op: bidirectional toggle/catch/follow/boost, cleanup, complete tutorial and frame-rate stability passed using real Arcade CPU physics');
