@@ -8,7 +8,9 @@ import { SvgAssetLibrary } from '../systems/SvgAssetLibrary';
 import { assetLayout, cachedAssetGeometry, ensureAssetGeometry } from '../systems/AssetGeometry';
 import { materialFor, platformSvg } from '../systems/PlatformMaterial';
 import { EDITOR_GRID, objectBounds, visualBounds, snapObjectToGrid, resizeObjectOnGrid, type GridObject } from '../systems/ObjectGeometry';
-import { DEFAULT_SCENE, SCENE_PALETTES, backdropLayers, sceneBackdropSvg } from '../systems/SceneBackdrop';
+import { DEFAULT_SCENE, SCENE_PALETTES, sceneBackdropSvg } from '../systems/SceneBackdrop';
+import { nextScenerySeed, scenerySeedFromText, SCENERY_VERSION } from '../systems/SceneryGenerator';
+import { themeBackgroundLayers, themeBackgroundSvg } from '../systems/ThemeBackground';
 import { forestLayerPreset, sceneLayersSvg } from '../systems/SceneLayers';
 import { EditorDraftStore, RECOVERY_KEY } from '../systems/EditorDraftStore';
 import { editorZoom, heightFillZoom, anchoredZoomScroll, centeredObjectScroll } from '../systems/EditorViewport';
@@ -155,6 +157,7 @@ export class EditorScene extends Phaser.Scene {
       <h2>背景与图层</h2>
       <label>场景主题<select data-scene="theme"><option value="forest">绘本森林</option><option value="snow">雪地</option><option value="desert">沙漠</option><option value="night">星空夜晚</option></select></label>
       <p class="scene-preview-status" role="status" aria-live="polite"></p>
+      <button data-action="scene-variation" title="生成另一组稳定的远山、树木和灌木布局">↻ 换一组主题景观</button>
       <section class="scene-layer-panel" aria-label="场景图层">
       <div class="layer-actions"><button data-action="layer-add">＋ 图层</button><button data-action="layer-preset" title="替换视觉图层，不改变关卡对象">森林预设</button></div>
       <div class="scene-layer-list" role="list" aria-label="图层列表"></div>
@@ -500,6 +503,16 @@ export class EditorScene extends Phaser.Scene {
       if (action.startsWith('move-')) {
         const key = ({ 'move-left': 'ArrowLeft', 'move-right': 'ArrowRight', 'move-up': 'ArrowUp', 'move-down': 'ArrowDown' } as Record<string, string>)[action];
         if (key) this.nudge(key, EDITOR_GRID); return;
+      }
+      if (action === 'scene-variation') {
+        const scene = this.map.scene ?? DEFAULT_SCENE;
+        if (scene.backgroundAssetId || scene.baseMode === 'sky') {
+          this.message('当前使用自定义或分层背景，主题景观没有显示。切换为“保留主题图形”后可更换。'); return;
+        }
+        this.commitSceneEdit(); this.remember();
+        const fallback = scenerySeedFromText(`${this.map.level.id}:${this.map.title}`);
+        this.map.scene = { ...scene, scenerySeed: nextScenerySeed(scene.scenerySeed ?? fallback), sceneryVersion: SCENERY_VERSION };
+        this.render(); this.message('已换成新的稳定景观组合；保存或导出后，试玩仍会保持这一组。Ctrl+Z 可恢复。'); return;
       }
       if (action.startsWith('layer-')) { this.editSceneLayer(action); return; }
       if (action === 'reset-platform-size') {
@@ -1658,6 +1671,8 @@ export class EditorScene extends Phaser.Scene {
   private sameScene(a: SceneSettings = DEFAULT_SCENE, b: SceneSettings = DEFAULT_SCENE): boolean {
     return a.theme === b.theme && a.backgroundAssetId === b.backgroundAssetId
       && a.backgroundMode === b.backgroundMode && a.parallax === b.parallax
+      && a.scenerySeed === b.scenerySeed
+      && a.sceneryVersion === b.sceneryVersion
       && (a.baseMode ?? 'theme') === (b.baseMode ?? 'theme') && JSON.stringify(a.layers ?? []) === JSON.stringify(b.layers ?? []);
   }
   private applySceneSettings(source?: HTMLElement): boolean {
@@ -1732,20 +1747,27 @@ export class EditorScene extends Phaser.Scene {
     this.root.querySelector<HTMLSelectElement>('[data-scene="mode"]')!.disabled = !scene.backgroundAssetId;
     const base = this.root.querySelector<HTMLSelectElement>('[data-scene="baseMode"]');
     if (base) base.value = scene.baseMode ?? 'theme';
-    this.sceneStatus(`实时预览 · ${SCENE_PALETTES[scene.theme].name}${scene.backgroundAssetId ? ' / 自定义背景' : ''} · 视差 ${scene.parallax}`);
+    const variation = this.root.querySelector<HTMLButtonElement>('[data-action="scene-variation"]');
+    if (variation) variation.disabled = !!scene.backgroundAssetId || scene.baseMode === 'sky';
+    const seed = scene.scenerySeed ?? scenerySeedFromText(`${this.map.level.id}:${this.map.title}`);
+    this.sceneStatus(`实时预览 · ${SCENE_PALETTES[scene.theme].name}${scene.backgroundAssetId ? ' / 自定义背景' : ''} · 景观 ${seed.toString(16).slice(-4).padStart(4, '0')} · 视差 ${scene.parallax}`);
   }
   private sceneBackgroundMarkup(): string {
     const settings = this.map.scene ?? DEFAULT_SCENE;
     const background = mapAssets(this.map).find((asset) => asset.id === settings.backgroundAssetId);
     const measured = background && cachedAssetGeometry(background.data);
     const image = background && measured ? { ...background, width: measured.sourceWidth, height: measured.sourceHeight } : background;
-    return sceneBackdropSvg(settings, this.map.level.width, image, this.scenePicture);
+    const seed = settings.scenerySeed ?? scenerySeedFromText(`${this.map.level.id}:${this.map.title}`);
+    if (!image && settings.baseMode !== 'sky')
+      return themeBackgroundSvg(settings.theme, settings.parallax, this.map.level.width, seed);
+    return sceneBackdropSvg(settings, this.map.level.width, image, this.scenePicture, `${this.map.level.id}:${this.map.title}`);
   }
   private renderSceneBackground(parallaxOnly = false): void {
     const svg = this.svg(); const background = svg.querySelector('[data-scene-background]');
     const settings = this.map.scene ?? DEFAULT_SCENE;
     const layers = svg.querySelectorAll<SVGGElement>('[data-scene-background] [data-preview-parallax]');
-    const factors = settings.backgroundAssetId ? [settings.parallax] : settings.baseMode === 'sky' ? [] : backdropLayers(settings.theme, settings.parallax).map((l) => l.parallax);
+    const factors = settings.backgroundAssetId ? [settings.parallax] : settings.baseMode === 'sky' ? []
+      : themeBackgroundLayers(settings.theme, settings.parallax).map((layer) => layer.parallax);
     if (parallaxOnly && layers.length === factors.length) {
       layers.forEach((layer, i) => layer.setAttribute('data-preview-parallax', String(factors[i])));
     } else if (background) { background.innerHTML = this.sceneBackgroundMarkup(); this.syncImageDefinitions(); }

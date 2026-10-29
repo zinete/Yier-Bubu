@@ -18,7 +18,11 @@ const maps = load('src/systems/CustomMap.ts');
 const drafts = load('src/systems/EditorDraftStore.ts', () => maps);
 const geometry = load('src/systems/ObjectGeometry.ts');
 const selection = load('src/systems/EditorSelection.ts', () => geometry);
-const backdrop = load('src/systems/SceneBackdrop.ts');
+const scenery = load('src/systems/SceneryGenerator.ts');
+const backdrop = load('src/systems/SceneBackdrop.ts', (name) => name.endsWith('/SceneryGenerator') ? scenery : {});
+const themeBackground = load('src/systems/ThemeBackground.ts', (name) => name === 'phaser'
+  ? { default: { Scenes: { Events: { SHUTDOWN: 'shutdown' } } } }
+  : name.endsWith('/SceneryGenerator') ? scenery : name.endsWith('.svg') ? { default: name } : {});
 const sceneLayers = load('src/systems/SceneLayers.ts');
 const materials = load('src/systems/PlatformMaterial.ts');
 const constants = load('src/config/constants.ts');
@@ -67,6 +71,8 @@ function setup(storage = new Storage(), observeResize = false) {
     if (name.endsWith('/ObjectGeometry')) return geometry;
     if (name.endsWith('/EditorSelection')) return selection;
     if (name.endsWith('/SceneBackdrop')) return backdrop;
+    if (name.endsWith('/SceneryGenerator')) return scenery;
+    if (name.endsWith('/ThemeBackground')) return themeBackground;
     if (name.endsWith('/SceneLayers')) return sceneLayers;
     if (name.endsWith('/PlatformMaterial')) return materials;
     if (name.endsWith('/SvgAssetLibrary')) return load('src/systems/SvgAssetLibrary.ts');
@@ -521,6 +527,14 @@ sliderControl.dispatchEvent(new menu.window.Event('input', { bubbles: true }));
 sliderControl.dispatchEvent(new menu.window.Event('change', { bubbles: true }));
 assert.equal(menuScene.map.scene.parallax, 0.55); assert.equal(menuDoc.querySelector('[data-parallax-value]').value, '0.55');
 assert.equal(menuScene.undo.length, menuHistory + 1, '简化控件后仍一次交互一次撤销');
+const baseModeControl = menuDoc.querySelector('[data-scene="baseMode"]'); baseModeControl.value = 'theme';
+baseModeControl.dispatchEvent(new menu.window.Event('input', { bubbles: true }));
+baseModeControl.dispatchEvent(new menu.window.Event('change', { bubbles: true }));
+const sceneryBefore = menuDoc.querySelector('[data-scene-background]').innerHTML;
+menuHistory = menuScene.undo.length; menu.click('scene-variation');
+assert.equal(menuScene.map.scene.sceneryVersion, 1); assert.ok(Number.isInteger(menuScene.map.scene.scenerySeed));
+assert.notEqual(menuDoc.querySelector('[data-scene-background]').innerHTML, sceneryBefore, '换一组景观应立即更新预览');
+assert.equal(menuScene.undo.length, menuHistory + 1, '更换景观应支持一次撤销');
 tab('assets').click(); assert.equal(materialDetails.open, true, '切换分类不重建高级设置节点');
 menu.click('save'); assert.equal(menuDoc.querySelector('[data-draft-status]').textContent, '已保存');
 menu.close();

@@ -46,7 +46,7 @@ for (let cycle = 0; cycle < 4; cycle++) {
   assert.equal(p2Skill.skillPressed && p2Skill.skillHeld, true, 'P2 右 Shift 生成独立托举按下沿');
   assert.equal(input.read('p1').skillPressed || input.read('p2').skillPressed, false, '按下沿只消费一次');
   key('KeyF', true, { repeat: true }); key('ShiftRight', true, { repeat: true });
-  assert.equal(input.read('p1').skillPressed || input.read('p2').skillPressed, false, '长按 repeat 不会重复切换托举');
+  assert.equal(input.read('p1').skillPressed || input.read('p2').skillPressed, false, '长按 repeat 不会重复产生托举按下沿');
   key('KeyF', false); key('ShiftRight', false);
   p1Skill = input.read('p1'); p2Skill = input.read('p2');
   assert.equal(p1Skill.skillReleased && !p1Skill.skillHeld, true);

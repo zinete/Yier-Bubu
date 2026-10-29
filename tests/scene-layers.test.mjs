@@ -13,7 +13,11 @@ function load(path, require = () => ({}), globals = {}) {
 }
 const maps = load('src/systems/CustomMap.ts');
 const layers = load('src/systems/SceneLayers.ts');
-const backdrop = load('src/systems/SceneBackdrop.ts');
+const scenery = load('src/systems/SceneryGenerator.ts');
+const backdrop = load('src/systems/SceneBackdrop.ts', (name) => name.endsWith('/SceneryGenerator') ? scenery : {});
+const themeBackground = load('src/systems/ThemeBackground.ts', (name) => name === 'phaser'
+  ? { default: { Scenes: { Events: { SHUTDOWN: 'shutdown' } } } }
+  : name.endsWith('/SceneryGenerator') ? scenery : name.endsWith('.svg') ? { default: name } : {});
 const preset = layers.forestLayerPreset();
 const make = () => ({ ...maps.newMap(), scene: { ...backdrop.DEFAULT_SCENE, baseMode: 'sky', layers: globalThis.structuredClone(preset) } });
 const canonical = (value) => JSON.stringify(value);
@@ -147,6 +151,8 @@ const { EditorScene } = load('src/scenes/EditorScene.ts', (name) => {
   if (name.endsWith('/CustomMap')) return maps;
   if (name.endsWith('/SceneLayers')) return layers;
   if (name.endsWith('/SceneBackdrop')) return backdrop;
+  if (name.endsWith('/SceneryGenerator')) return scenery;
+  if (name.endsWith('/ThemeBackground')) return themeBackground;
   if (name.endsWith('/DefaultAssets')) return { mapAssets: (map) => [...library, ...(map.assets ?? [])] };
   return {};
 }, { structuredClone: globalThis.structuredClone, window: { confirm: () => true } });

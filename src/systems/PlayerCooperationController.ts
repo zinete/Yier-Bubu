@@ -63,36 +63,35 @@ export class PlayerCooperationController {
   prepare(time: number, commands: Record<PlayerId, PlayerCommand>): ControlMap {
     this.now = time;
     this.expireTransientStates(time);
-    const consumedSkills = new Set<PlayerId>();
     const boosted = new Set<PlayerId>();
 
     const relation = this.relationValue;
     if (relation) {
       if (!this.relationIsUsable(relation) || !this.environment.isGrounded(relation.carrierId)) {
         this.releaseRelation('NORMAL', 'NORMAL');
+      } else if (!commands[relation.carrierId].skillHeld) {
+        this.releaseRelation('LIFT_CANCEL', 'NORMAL');
+        this.transientUntil[relation.carrierId] = time + this.config.cancelVisualMs;
       } else if (commands[relation.riderId].jumpPressed) {
         this.boostRider(time);
         boosted.add(relation.riderId);
-      } else if (commands[relation.carrierId].skillPressed) {
-        consumedSkills.add(relation.carrierId);
-        this.releaseRelation('LIFT_CANCEL', 'NORMAL');
-        this.transientUntil[relation.carrierId] = time + this.config.cancelVisualMs;
       }
     }
 
     if (!this.relationValue) {
       for (const id of this.ids) {
-        if (consumedSkills.has(id)) continue;
         if (this.states[id] === 'LIFT_READY'
-          && (!this.environment.isAvailable(id) || !this.environment.isGrounded(id))) {
+          && (!this.environment.isAvailable(id) || !this.environment.isGrounded(id)))
           this.states[id] = 'NORMAL';
-        }
-        if (!commands[id].skillPressed) continue;
-        if (this.states[id] === 'LIFT_READY') {
+        else if (this.states[id] === 'LIFT_READY' && !commands[id].skillHeld) {
           this.states[id] = 'LIFT_CANCEL';
           this.transientUntil[id] = time + this.config.cancelVisualMs;
-        } else if (this.states[id] === 'NORMAL'
-          && this.environment.isAvailable(id) && this.environment.isSafeGround(id)) {
+        }
+        const otherId = this.ids.find((candidate) => candidate !== id);
+        if (this.states[id] === 'NORMAL' && commands[id].skillHeld
+          && this.environment.isAvailable(id)
+          && !!otherId && this.environment.isAvailable(otherId)
+          && this.environment.isSafeGround(id)) {
           this.states[id] = 'LIFT_READY';
           this.players[id].clearJumpMemory();
         }
@@ -170,7 +169,8 @@ export class PlayerCooperationController {
     return this.states[id] === 'CARRYING' ? this.config.carryingSpeedScale
       : this.states[id] === 'LIFT_READY' ? this.config.readySpeedScale : 1;
   }
-  get boostJumpVelocity(): number { return PLAYER.JUMP_VELOCITY * this.config.boostJumpMultiplier; }
+  /** Cooperation adds starting height, never a stronger personal jump. */
+  get boostJumpVelocity(): number { return PLAYER.JUMP_VELOCITY; }
 
   releasePlayer(id: PlayerId): void {
     if (this.relationValue

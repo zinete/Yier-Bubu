@@ -2,7 +2,11 @@ import { PLAYER } from '../config/constants';
 import type { LevelData, PlatformData } from '../types/game';
 
 export const NORMAL_JUMP_HEIGHT = PLAYER.JUMP_VELOCITY ** 2 / (2 * PLAYER.NORMAL_GRAVITY);
-// 176px: beyond a normal 120px jump, within the head support + normal jump.
+// Conservative usable height gained by standing on either current character.
+// It is intentionally lower than the measured body height to leave landing margin.
+export const MIN_LIFT_START_GAIN = 64;
+// 176px: beyond a normal 120px jump, but reachable after the exact same jump
+// starts roughly one character-body higher on a partner's head.
 export const COOP_HIGH_RISE = Math.ceil(NORMAL_JUMP_HEIGHT) + 55;
 export const COOP_SPAWNS = { p1: { x: 120, y: 444 }, p2: { x: 220, y: 444 } };
 export const COOP_CHECKPOINT_SPAWNS = { p1: { x: 1500, y: 444 }, p2: { x: 1590, y: 444 } };

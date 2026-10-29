@@ -3,9 +3,11 @@ import type { LevelData } from '../types/game';
 import type { SceneTheme } from './CustomMap';
 import { SCENE_PALETTES, backdropLayers } from './SceneBackdrop';
 import { mountViewportDrawing, visibleRepeats, visibleSequence } from './ViewportArt';
+import { mountThemeBackground } from './ThemeBackground';
 
 /** 绘本森林：代码绘制的分层场景，碰撞仍由关卡数据管理。 */
-export function buildForest(scene: Phaser.Scene, level: LevelData, title?: string, theme: SceneTheme = 'forest', customBackground = false, parallax = 0.2, editableLayers = false): void {
+export function buildForest(scene: Phaser.Scene, level: LevelData, title?: string, theme: SceneTheme = 'forest', customBackground = false,
+  parallax = 0.2, editableLayers = false, scenerySeed?: number): void {
   const palette = SCENE_PALETTES[theme];
   const skyKey = `scene-sky-${theme}`;
   if (!scene.textures.exists(skyKey)) {
@@ -19,13 +21,18 @@ export function buildForest(scene: Phaser.Scene, level: LevelData, title?: strin
     texture.refresh();
   }
   scene.add.image(0, 0, skyKey).setOrigin(0).setDisplaySize(level.width + 2000, 540).setScrollFactor(0).setDepth(-30);
-  if (!customBackground) {
-    for (const layer of backdropLayers(theme, parallax)) {
+  const backgroundSeed = scenerySeed ?? `${level.id}:${title ?? ''}`;
+  const mountedArtwork = !customBackground && mountThemeBackground(scene, theme, parallax, backgroundSeed);
+  if (!customBackground && !mountedArtwork) {
+    for (const layer of backdropLayers(theme, parallax, backgroundSeed)) {
       const minX = Math.min(...layer.shapes.map((s) => s.kind === 'rect' ? s.x : s.x - s.width / 2));
       const maxX = Math.max(...layer.shapes.map((s) => s.kind === 'rect' ? s.x + s.width : s.x + s.width / 2));
       mountViewportDrawing(scene, layer.parallax, (graphics, view) => {
       for (const offset of visibleRepeats(view, layer.repeat, minX, maxX)) {
         for (const shape of layer.shapes) {
+          const left = shape.kind === 'rect' ? shape.x + offset : shape.x + offset - shape.width / 2;
+          const right = shape.kind === 'rect' ? left + shape.width : shape.x + offset + shape.width / 2;
+          if (right < view.x || left > view.x + view.width) continue;
           graphics.fillStyle(shape.color, shape.alpha);
           if (shape.kind === 'circle') graphics.fillCircle(shape.x + offset, shape.y, shape.width / 2);
           else if (shape.kind === 'ellipse') graphics.fillEllipse(shape.x + offset, shape.y, shape.width, shape.height);
@@ -60,22 +67,7 @@ export function buildForest(scene: Phaser.Scene, level: LevelData, title?: strin
     }
   }
   }).setDepth(-2);
-  // 首屏树与路牌属于装饰，不改变主线路径。
-  for (const x of customBackground ? [] : [25, 695, 1470, 2330, 3065, 3910]) {
-    const tree = scene.add.graphics().setDepth(-3);
-    if (theme === 'desert') {
-      tree.fillStyle(palette.leaf).fillRoundedRect(x, 320, 22, 124, 10);
-      tree.fillRoundedRect(x - 27, 355, 32, 16, 7).fillRoundedRect(x - 27, 325, 13, 43, 6);
-      tree.fillRoundedRect(x + 12, 378, 32, 16, 7).fillRoundedRect(x + 32, 345, 13, 45, 6);
-      continue;
-    }
-    tree.fillStyle(0x927451).fillRoundedRect(x, 225, 38, 219, 15);
-    tree.lineStyle(3, 0xb39765).lineBetween(x + 12, 270, x + 10, 415);
-    tree.fillStyle(0x679466).fillCircle(x + 18, 212, 80);
-    tree.fillStyle(palette.leaf).fillCircle(x - 20, 180, 64);
-    tree.fillStyle(theme === 'snow' ? 0xe6f3ff : palette.light).fillCircle(x + 42, 162, 62);
-    tree.fillStyle(0xc2d795, 0.5).fillEllipse(x + 30, 139, 58, 26);
-  }
+  // 近景树已经并入共享场景块，编辑器与试玩不再各画一套不同装饰。
   // 分层地图不再注入编辑器中不存在的路牌和章节文字。
   if (editableLayers) return;
   const sign = scene.add.graphics().setDepth(1);

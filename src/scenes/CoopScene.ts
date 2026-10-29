@@ -124,7 +124,7 @@ export class CoopScene extends Phaser.Scene {
       padding: { x: 10, y: 7 },
     }).setOrigin(0.5).setDepth(1);
     sign(220, 310, '1 · 试试各自的跑跳');
-    sign(555, 210, '2 · F / 右 Shift 切换托举\n队友从上方落下，再借力跳');
+    sign(555, 210, '2 · 按住 F / 右 Shift 托举\n队友从上方落下，借高度起跳');
     sign(740, 200, '3 · 开桥机关');
     sign(1220, 305, '4 · 每只熊站一个开关');
     sign(1545, 310, '5 · 一起到营地');
@@ -233,10 +233,10 @@ export class CoopScene extends Phaser.Scene {
       p.label.setPosition(p.actor.x, p.actor.y - 104).setVisible(p.life === 'normal');
       const state = this.lift.stateOf(id);
       const jump = id === 'p1' ? 'W' : '↑';
-      p.label.setText(state === 'RIDING' ? `${id.toUpperCase()} · 站稳 · ${jump} 借力跳`
+      p.label.setText(state === 'RIDING' ? `${id.toUpperCase()} · 站稳 · ${jump} 起跳`
         : state === 'CARRYING' ? `${id.toUpperCase()} · 托举中`
           : state === 'LIFT_READY' ? `${id.toUpperCase()} · 托举准备`
-            : state === 'BOOST_JUMP' ? `${id.toUpperCase()} · 借力跳`
+            : state === 'BOOST_JUMP' ? `${id.toUpperCase()} · 合作起跳`
               : id.toUpperCase());
     }
     this.sharedCamera.update(ids.map((id) => {
@@ -253,7 +253,7 @@ export class CoopScene extends Phaser.Scene {
     let hint = '';
     if (this.phase === 'ready') {
       status = this.ready.every(Boolean) ? '两人已就绪，请松开按键后出发。' : '两人各按一次准备键。';
-      hint = '同一键盘，共享画面 · Esc 暂停\n一二按 F、布布按右 Shift 切换托举；队友从上方落下后可借力跳。';
+      hint = '同一键盘，共享画面 · Esc 暂停\n一二按住 F、布布按住右 Shift 托举；松开即结束。';
     } else if (this.phase === 'paused') {
       status = '按键已清空，准备好后再继续。'; hint = '按 Esc 或点击继续冒险。';
     } else if (this.phase === 'won') {
@@ -267,11 +267,11 @@ export class CoopScene extends Phaser.Scene {
       else if (this.lift.blockedAbove) hint = '头顶空间不足，请换到开阔地面托举。';
       else if (this.lift.supported) {
         const rider = this.lift.riderId!;
-        hint = `${rider.toUpperCase()} 已站稳：按 ${rider === 'p1' ? 'W' : '↑'} 借力起跳；托举者可以慢速移动。`;
+        hint = `${rider.toUpperCase()} 已站稳：按 ${rider === 'p1' ? 'W' : '↑'} 从头顶正常起跳；托举者可以慢速移动。`;
       } else if (this.lift.active) {
         const ready = ids.filter((id) => this.lift.stateOf(id) === 'LIFT_READY').map((id) => id.toUpperCase()).join('、');
-        hint = `${ready} 已准备托举，队友需要从正上方落到头顶；再次按技能键可取消。`;
-      } else if (!this.rules.bridgeOpen) hint = '任意一人先切换托举准备，另一人从上方落下并借力登上高台。';
+        hint = `${ready} 正在准备托举：请继续按住技能键，队友从正上方落到头顶；松开即结束。`;
+      } else if (!this.rules.bridgeOpen) hint = '任意一人先按住托举键，另一人从头顶起跳登上单人无法到达的高台。';
       else if (!this.rules.gateOpen) hint = '每人站一个紫色压力开关，门开启后会保持开放。';
       else if (!this.rules.checkpointActive) hint = '两人同时走进蓝色营地，激活检查点后再向前。';
       else hint = '跨过小坑，两人同时进入金色终点区。';
@@ -280,7 +280,7 @@ export class CoopScene extends Phaser.Scene {
       else if (!status) status = `跑跳练习 ${ids.filter((id) => this.partners[id].moved && this.partners[id].jumped).length}/2 · ${this.rules.checkpointActive ? '营地已激活 ✓' : this.rules.gateOpen ? '双机关完成 ✓' : this.rules.bridgeOpen ? '桥梁已开启 ✓' : '一起去高台开桥'}`;
     }
     this.overlay.render({ phase: this.phase, ready: this.ready, status, hint, players: ids.map((id) =>
-      `${id.toUpperCase()} ${id === 'p1' ? '一二 · A/D W E F' : '布布 · ←/→ ↑ Enter 右Shift'}${this.partners[id].life === 'respawning' ? ' · 复活中' : ''}`) });
+      `${id.toUpperCase()} ${id === 'p1' ? '一二 · A/D W E · 按住F托举' : '布布 · ←/→ ↑ Enter · 按住右Shift托举'}${this.partners[id].life === 'respawning' ? ' · 复活中' : ''}`) });
   }
   private togglePause(): void {
     if (this.leaving || (this.phase !== 'playing' && this.phase !== 'paused')) return;

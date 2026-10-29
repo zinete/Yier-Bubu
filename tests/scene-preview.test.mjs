@@ -11,7 +11,11 @@ function load(path, require = () => ({}), globals = {}) {
   }).outputText, { module, exports: module.exports, require, ...globals });
   return module.exports;
 }
-const backdrop = load('src/systems/SceneBackdrop.ts');
+const scenery = load('src/systems/SceneryGenerator.ts');
+const backdrop = load('src/systems/SceneBackdrop.ts', (name) => name.endsWith('/SceneryGenerator') ? scenery : {});
+const themeBackground = load('src/systems/ThemeBackground.ts', (name) => name === 'phaser'
+  ? { default: { Scenes: { Events: { SHUTDOWN: 'shutdown' } } } }
+  : name.endsWith('/SceneryGenerator') ? scenery : name.endsWith('.svg') ? { default: name } : {});
 const { DEFAULT_SCENE, SCENE_PALETTES, backdropLayers, themeParallax, sceneBackdropSvg } = backdrop;
 for (const theme of Object.keys(SCENE_PALETTES)) {
   const layers = backdropLayers(theme);
@@ -36,6 +40,8 @@ const { EditorScene } = load('src/scenes/EditorScene.ts', (name) => {
   if (name.endsWith('/EditorDocument')) return editorDocument;
   if (name.endsWith('/EditorHistory')) return editorHistory;
   if (name.endsWith('/SceneBackdrop')) return backdrop;
+  if (name.endsWith('/SceneryGenerator')) return scenery;
+  if (name.endsWith('/ThemeBackground')) return themeBackground;
   if (name.endsWith('/CustomMap')) return mapModule;
   if (name.endsWith('/DefaultAssets')) return { mapAssets: library };
   if (name.endsWith('/AssetGeometry')) return { cachedAssetGeometry: () => assetMeasurements };
@@ -75,7 +81,8 @@ const objectsBefore = JSON.stringify(scene.map.level);
 fields['[data-scene="theme"]'].value = 'snow';
 assert.equal(scene.applySceneSettings(), true);
 assert.equal(scene.map.scene.theme, 'snow');
-assert.ok(markup.includes('#8fbbd8'), '选择后立即替换为雪地背景，不等待保存按钮');
+assert.ok(markup.includes('backgrounds/snow/sky.svg') && markup.includes('data-theme-layer="mid"'),
+  '选择后立即替换为雪地四层 SVG 背景，不等待保存按钮');
 assert.equal(renders, 0, '实时更新不能重建对象层/整个编辑器');
 assert.equal(scene.selected, selected, '实时预览保持选择状态');
 scene.commitSceneEdit();
@@ -130,7 +137,7 @@ assert.equal(JSON.stringify(scene.map), beforePan, '视差演示只移动视口'
 fields['[data-scene="background"]'].value = '';
 scene.applySceneSettings(); scene.commitSceneEdit();
 assert.equal(fields['[data-scene="mode"]'].disabled, true);
-assert.ok(markup.includes('scene-preview-hills'));
+assert.ok(markup.includes('data-theme-layer="far"') && markup.includes('data-theme-layer="front"'));
 const history = scene.undo.length;
 fields['[data-scene="parallax"]'].value = '0.9'; scene.applySceneSettings();
 fields['[data-scene="parallax"]'].value = '0.7'; scene.applySceneSettings(); scene.commitSceneEdit();
@@ -164,7 +171,9 @@ assert.equal(tileScale, 540 / 1024, '试玩平铺也应以真实原图高度适�
 
 // 试玩也消费同一图层数据，主题视差不再仅对自定义背景生效。
 const viewportArt = load('src/systems/ViewportArt.ts');
-const { buildForest } = load('src/systems/ForestArt.ts', (name) => name.endsWith('/ViewportArt') ? viewportArt : backdrop);
+const { buildForest } = load('src/systems/ForestArt.ts', (name) => name.endsWith('/ViewportArt') ? viewportArt
+  : name.endsWith('/ThemeBackground') ? { mountThemeBackground: () => false }
+    : name.endsWith('/SceneryGenerator') ? scenery : backdrop);
 for (const theme of Object.keys(SCENE_PALETTES)) {
   const graphics = [];
   const chain = () => {

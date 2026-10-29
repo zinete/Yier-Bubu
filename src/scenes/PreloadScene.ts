@@ -11,8 +11,8 @@ import selectedCheck from '../assets/start-screen/icons/selected-check.png';
 import doubleHeart from '../assets/start-screen/icons/double-heart.png';
 import yierThumb from '../assets/start-screen/characters/yier-thumb.png';
 import bubuThumb from '../assets/start-screen/characters/bubu-thumb.png';
-import yierLiftSource from '../assets/start-screen/characters/yier-lift-source.png';
-import bubuLiftSource from '../assets/start-screen/characters/bubu-lift-source.png';
+import yierLiftSource from '../assets/start-screen/characters/yier-lift-pose-v2.png';
+import bubuLiftSource from '../assets/start-screen/characters/bubu-lift-pose-v3.png';
 import portraitFrame from '../assets/ui/portrait-frame.png';
 import iconHeartFull from '../assets/ui/icon-heart-full.png';
 import iconHeartEmpty from '../assets/ui/icon-heart-empty.png';
@@ -29,6 +29,8 @@ import buttonPlay from '../assets/ui/button-play.png';
 import { ViewportManager } from '../systems/ViewportManager';
 import { generatedAudio } from '../systems/GeneratedAudio';
 import { isTouchPrimaryDevice } from '../systems/UILayout';
+import { fitPoseBounds, type OpaqueBounds } from '../systems/SpritePose';
+import { preloadThemeBackgrounds } from '../systems/ThemeBackground';
 
 const IMAGES = [
   ['start-background', startBackground], ['start-logo', gameLogo],
@@ -76,6 +78,8 @@ export class PreloadScene extends Phaser.Scene {
     if (!this.textures.exists('characters'))
       this.load.spritesheet('characters', characterSheet, { frameWidth: 128, frameHeight: 142 });
     for (const [key, url] of IMAGES) if (!this.textures.exists(key)) this.load.image(key, url);
+    // 主题背景属于可降级资源；失败时 ForestArt 会自动回退到旧的程序化背景。
+    preloadThemeBackgrounds(this);
     if (this.touchAssets) for (const [key, url] of TOUCH_IMAGES) if (!this.textures.exists(key)) this.load.image(key, url);
   }
   create(): void {
@@ -108,30 +112,12 @@ export class PreloadScene extends Phaser.Scene {
             repeat: state === 'hurt' ? 0 : -1,
           });
       }
-    const liftFrames = {
-      'lift-ready': { frames: [0, 1], frameRate: 6, repeat: -1 },
-      'lift-catch': { frames: [2, 3], frameRate: 10, repeat: 0 },
-      'lift-hold': { frames: [4, 5], frameRate: 4, repeat: -1 },
-      'lift-takeoff': { frames: [6], frameRate: 8, repeat: 0 },
-      'lift-release': { frames: [7], frameRate: 8, repeat: 0 },
-      // Role-specific semantic aliases. Both characters register every role so
-      // the same cooperation state machine also works in the reverse direction.
-      'lift-carrying': { frames: [4, 5], frameRate: 4, repeat: -1 },
-      'lift-riding': { frames: [4, 5], frameRate: 4, repeat: -1 },
-      'lift-boost-jump': { frames: [6], frameRate: 8, repeat: 0 },
-      'lift-cancel': { frames: [7], frameRate: 8, repeat: 0 },
-    } as const;
-    for (const character of ['yier', 'bubu'] as const)
-      for (const [state, spec] of Object.entries(liftFrames)) {
-        const key = `${character}-${state}`;
-        if (!this.anims.exists(key))
-          this.anims.create({
-            key,
-            frames: spec.frames.map((frame) => ({ key: `${character}-lift-sheet`, frame })),
-            frameRate: spec.frameRate,
-            repeat: spec.repeat,
-          });
-      }
+    // 托举只使用一张静态举手姿态。准备与承载共用它，不再循环切换姿态。
+    for (const character of ['yier', 'bubu'] as const) {
+      const key = `${character}-lift`;
+      if (!this.anims.exists(key))
+        this.anims.create({ key, frames: [{ key: `${character}-lift-pose` }], frameRate: 1, repeat: 0 });
+    }
     this.scene.start(SCENE.START);
   }
   private onFileError(file: Phaser.Loader.File): void {
@@ -223,58 +209,60 @@ export class PreloadScene extends Phaser.Scene {
       40,
       34,
     );
-    this.makeLiftSheet('yier-lift-sheet', 'coop-lift-yier-source');
-    this.makeLiftSheet('bubu-lift-sheet', 'coop-lift-bubu-source');
+    this.makeLiftPose('yier-lift-pose', 'coop-lift-yier-source', 0);
+    this.makeLiftPose('bubu-lift-pose', 'coop-lift-bubu-source', 1);
   }
 
   /**
-   * Image generation keeps the eight poses in a 4×2 contact sheet. Normalize
-   * those cells into the game's existing 128×142 frame contract at load time,
-   * without changing the Player display size, origin or physics body.
+   * Fits the single arms-up pose's opaque silhouette to the character's
+   * original idle silhouette.
+   * The output keeps the existing 128×142 frame contract, display size and body.
    */
-  private makeLiftSheet(outputKey: string, sourceKey: string): void {
+  private makeLiftPose(outputKey: string, sourceKey: string, characterRow: number): void {
     if (this.textures.exists(outputKey)) return;
     const source = this.textures.get(sourceKey).getSourceImage() as HTMLImageElement;
-    const scratch = document.createElement('canvas');
-    scratch.width = source.naturalWidth || source.width;
-    scratch.height = source.naturalHeight || source.height;
-    const scratchContext = scratch.getContext('2d', { willReadFrequently: true });
-    if (!scratchContext || !scratch.width || !scratch.height) return;
-    scratchContext.drawImage(source, 0, 0);
-    const pixels = scratchContext.getImageData(0, 0, scratch.width, scratch.height).data;
-    const columns = 4, rows = 2, frameWidth = 128, frameHeight = 142;
-    const bounds = Array.from({ length: columns * rows }, (_, index) => {
-      const column = index % columns, row = Math.floor(index / columns);
-      const cellX = Math.round(column * scratch.width / columns);
-      const cellY = Math.round(row * scratch.height / rows);
-      const cellRight = Math.round((column + 1) * scratch.width / columns);
-      const cellBottom = Math.round((row + 1) * scratch.height / rows);
-      let left = cellRight, top = cellBottom, right = cellX, bottom = cellY;
-      for (let y = cellY; y < cellBottom; y += 1)
-        for (let x = cellX; x < cellRight; x += 1)
-          if (pixels[(y * scratch.width + x) * 4 + 3] > 12) {
-            left = Math.min(left, x); top = Math.min(top, y);
-            right = Math.max(right, x + 1); bottom = Math.max(bottom, y + 1);
-          }
-      if (right <= left || bottom <= top)
-        return { x: cellX, y: cellY, width: cellRight - cellX, height: cellBottom - cellY };
-      return { x: left, y: top, width: right - left, height: bottom - top };
-    });
-    const maxWidth = Math.max(...bounds.map((box) => box.width));
-    const maxHeight = Math.max(...bounds.map((box) => box.height));
-    const scale = Math.min(118 / maxWidth, 136 / maxHeight);
-    const texture = this.textures.createCanvas(outputKey, frameWidth * bounds.length, frameHeight);
+    const characters = this.textures.get('characters').getSourceImage() as HTMLImageElement;
+    const sourceWidth = source.naturalWidth || source.width;
+    const sourceHeight = source.naturalHeight || source.height;
+    const frameWidth = 128, frameHeight = 142;
+    const pose = this.opaqueBounds(source, 0, 0, sourceWidth, sourceHeight);
+    const reference = this.opaqueBounds(characters, 0, characterRow * frameHeight, frameWidth, frameHeight);
+    const destination = fitPoseBounds(pose, reference);
+    const texture = this.textures.createCanvas(outputKey, frameWidth, frameHeight);
     if (!texture) return;
-    texture.context.clearRect(0, 0, frameWidth * bounds.length, frameHeight);
+    texture.context.clearRect(0, 0, frameWidth, frameHeight);
     texture.context.imageSmoothingEnabled = true;
-    bounds.forEach((box, index) => {
-      const width = box.width * scale, height = box.height * scale;
-      const x = index * frameWidth + (frameWidth - width) / 2;
-      const y = frameHeight - height - 2;
-      texture.context.drawImage(source, box.x, box.y, box.width, box.height, x, y, width, height);
-      texture.add(index, 0, index * frameWidth, 0, frameWidth, frameHeight);
-    });
+    texture.context.drawImage(
+      source,
+      pose.x, pose.y, pose.width, pose.height,
+      destination.x, destination.y, destination.width, destination.height,
+    );
     texture.refresh();
+  }
+
+  private opaqueBounds(
+    source: HTMLImageElement,
+    cropX: number,
+    cropY: number,
+    cropWidth: number,
+    cropHeight: number,
+  ): OpaqueBounds {
+    const canvas = document.createElement('canvas');
+    canvas.width = cropWidth; canvas.height = cropHeight;
+    const context = canvas.getContext('2d', { willReadFrequently: true });
+    if (!context) return { x: 0, y: 0, width: cropWidth, height: cropHeight };
+    context.drawImage(source, cropX, cropY, cropWidth, cropHeight, 0, 0, cropWidth, cropHeight);
+    const pixels = context.getImageData(0, 0, cropWidth, cropHeight).data;
+    let left = cropWidth, top = cropHeight, right = 0, bottom = 0;
+    for (let y = 0; y < cropHeight; y += 1)
+      for (let x = 0; x < cropWidth; x += 1)
+        if (pixels[(y * cropWidth + x) * 4 + 3] > 12) {
+          left = Math.min(left, x); top = Math.min(top, y);
+          right = Math.max(right, x + 1); bottom = Math.max(bottom, y + 1);
+        }
+    return right > left && bottom > top
+      ? { x: left, y: top, width: right - left, height: bottom - top }
+      : { x: 0, y: 0, width: cropWidth, height: cropHeight };
   }
 
   private trimStartCardTextures(): void {

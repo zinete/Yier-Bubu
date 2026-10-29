@@ -11,8 +11,6 @@ export interface CoopLiftConfig {
   catchTopSlop: number;
   minCatchFallSpeed: number;
   maxCatchFallSpeed: number;
-  /** Extra height comes from one stronger launch, never from repeated impulses. */
-  boostJumpMultiplier: number;
   boostCooldownMs: number;
   boostVisualMs: number;
   cancelVisualMs: number;
@@ -29,7 +27,6 @@ export const COOP_LIFT: Readonly<CoopLiftConfig> = {
   catchTopSlop: 5,
   minCatchFallSpeed: 18,
   maxCatchFallSpeed: 780,
-  boostJumpMultiplier: 1.12,
   boostCooldownMs: 360,
   boostVisualMs: 180,
   cancelVisualMs: 170,

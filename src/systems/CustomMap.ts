@@ -10,6 +10,10 @@ export interface SceneLayer {
 }
 export interface SceneSettings {
   theme: SceneTheme; backgroundAssetId?: string; backgroundMode: 'stretch' | 'repeat'; parallax: number;
+  /** 确定性场景块种子；缺省时兼容旧地图并由地图身份推导。 */
+  scenerySeed?: number;
+  /** 生成算法版本，确保已发布社区地图未来仍可复现。 */
+  sceneryVersion?: 1;
   /** 缺省时保留旧地图的主题图形；sky 仅保留渐变天空。 */
   baseMode?: 'theme' | 'sky'; layers?: SceneLayer[];
 }
@@ -194,6 +198,15 @@ export function parseCustomMap(input: unknown, playable = true): CustomMap {
   if (backgroundAssetId !== undefined && !hasAsset(backgroundAssetId)) fail('背景引用的素材不存在');
   const scene: SceneSettings = { theme: theme as SceneTheme, backgroundMode: backgroundMode as 'stretch' | 'repeat',
     parallax: number(sceneRaw.parallax ?? 0.2, 0, 1, '背景视差'), backgroundAssetId: backgroundAssetId as string | undefined };
+  if (sceneRaw.scenerySeed !== undefined) {
+    const scenerySeed = number(sceneRaw.scenerySeed, 0, 0xffffffff, '景观种子');
+    if (!Number.isInteger(scenerySeed)) fail('景观种子必须是整数');
+    scene.scenerySeed = scenerySeed;
+  }
+  if (sceneRaw.sceneryVersion !== undefined) {
+    if (sceneRaw.sceneryVersion !== 1) fail('不支持的景观生成版本');
+    scene.sceneryVersion = 1;
+  }
   if (sceneRaw.baseMode !== undefined) {
     if (sceneRaw.baseMode !== 'theme' && sceneRaw.baseMode !== 'sky') fail('基础背景模式不正确');
     scene.baseMode = sceneRaw.baseMode as SceneSettings['baseMode'];

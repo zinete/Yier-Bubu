@@ -12,9 +12,11 @@ const load = runtime({}, {
   '../systems/ViewportManager': { ViewportManager: { attach() {} } },
   '../systems/GeneratedAudio': { generatedAudio: () => ({ music: 'music.wav' }) },
   '../systems/UILayout': { isTouchPrimaryDevice: () => touch },
+  '../systems/ThemeBackground': { preloadThemeBackgrounds() {} },
 });
 const { PreloadScene } = load('src/scenes/PreloadScene.ts');
 const { SCENE } = load('src/config/constants.ts');
+const { fitPoseBounds } = load('src/systems/SpritePose.ts');
 const loaded = new Set();
 class Label extends Events {
   visible = true;
@@ -62,17 +64,22 @@ instance.load.emit('loaderror', { key: 'music', type: 'audio' });
 instance.create();
 assert.equal(instance.started[0], SCENE.START, '音频失败可以无声继续');
 assert.equal(instance.prepared, 2);
-const liftStates = ['lift-ready', 'lift-carrying', 'lift-riding', 'lift-boost-jump', 'lift-cancel'];
-for (const key of ['yier', 'bubu'].flatMap((character) => liftStates.map((state) => `${character}-${state}`)))
-  assert.ok(instance.animations.some((animation) => animation.key === key), `缺少托举动画 ${key}`);
-const stableTracks = instance.animations.filter((animation) => /-lift-(carrying|riding)$/.test(animation.key));
-assert.equal(stableTracks.length, 4, '两个角色都能担任托举者或乘坐者');
-for (const animation of stableTracks)
-  assert.equal(animation.frames.map((frame) => frame.frame).join(','), '4,5');
 for (const character of ['yier', 'bubu']) {
-  assert.deepEqual(instance.animations.find((animation) => animation.key === `${character}-lift-boost-jump`).frames.map((frame) => frame.frame), [6]);
-  assert.deepEqual(instance.animations.find((animation) => animation.key === `${character}-lift-cancel`).frames.map((frame) => frame.frame), [7]);
+  const animation = instance.animations.find((candidate) => candidate.key === `${character}-lift`);
+  assert.ok(animation, `缺少静态托举姿态 ${character}-lift`);
+  assert.equal(animation.frames.length, 1, '托举姿态不应来回播放');
+  assert.equal(animation.frames[0].key, `${character}-lift-pose`);
+  assert.equal(animation.repeat, 0);
 }
+assert.equal(instance.animations.some((animation) => /-lift-(ready|carrying|riding|boost-jump|cancel)$/.test(animation.key)), false,
+  '不再注册多余的托举阶段动画');
+const fitted = fitPoseBounds(
+  { x: 3, y: 4, width: 200, height: 250 },
+  { x: 10, y: 12, width: 100, height: 120 },
+);
+assert.ok(fitted.width <= 100 && fitted.height <= 120, '托举姿态限制在原角色轮廓内');
+assert.equal(fitted.y + fitted.height, 132, '托举姿态脚底与原角色脚底对齐');
+assert.equal(fitted.width / fitted.height, 200 / 250, '托举姿态保持原始宽高比');
 instance.events.emit('shutdown');
 log('preload: missing-image gate, cached retry, audio fallback and cleanup passed');
 touch = true; instance = scene();

@@ -364,7 +364,8 @@ export class GameScene extends Phaser.Scene {
     const settings = this.customMap?.scene;
     const bgAsset = this.customMap ? mapAssets(this.customMap).find((asset) => asset.id === settings?.backgroundAssetId &&
       this.textures.exists(this.customTextures.get(asset.id) ?? '')) : undefined;
-    buildForest(this, this.level, this.customMap?.title, settings?.theme, !!bgAsset || settings?.baseMode === 'sky', settings?.parallax, settings?.layers !== undefined);
+    buildForest(this, this.level, this.customMap?.title, settings?.theme, !!bgAsset || settings?.baseMode === 'sky',
+      settings?.parallax, !!this.customMap, settings?.scenerySeed);
     if (settings?.layers) mountSceneLayers(this, settings.layers, this.customTextures);
     if (bgAsset && settings) {
       const key = this.customTextures.get(bgAsset.id);
@@ -375,7 +376,7 @@ export class GameScene extends Phaser.Scene {
             mode: 'repeat', x: 0, y: 0, width: frame.cutWidth * 540 / frame.cutHeight, height: 540,
             parallax: settings.parallax, opacity: 1, visible: true, locked: true }], this.customTextures, -8);
         } else this.add.image(0, 0, key).setOrigin(0).setDisplaySize(this.level.width, 540)
-          .setDepth(-26).setScrollFactor(settings.parallax);
+          .setDepth(-26).setScrollFactor(settings.parallax, 1);
       }
     }
     for (const object of this.customMap?.decorations ?? []) {

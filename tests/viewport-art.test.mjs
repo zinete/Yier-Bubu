@@ -42,7 +42,8 @@ const queued = pool.sync; scene.cameras.main = undefined; events.emit('shutdown'
 assert.equal(camera.entries.length, 0); assert.equal(events.entries.length, 0);
 assert.ok(images.every((image) => !image.scene)); assert.doesNotThrow(queued);
 
-const { buildForest } = load('src/systems/ForestArt.ts');
+const forestLoad = runtime({}, { './ThemeBackground': { mountThemeBackground: () => false } });
+const { buildForest } = forestLoad('src/systems/ForestArt.ts');
 const counts = [];
 for (const width of [1920, 100000, 1000000]) {
   const camera = Object.assign(new Events(), { scrollX: 0, width: 960, zoom: 1 });

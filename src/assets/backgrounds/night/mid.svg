@@ -1,0 +1,8 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1920" height="540" viewBox="0 0 1920 540">
+  <g stroke-linejoin="round">
+    <g transform="translate(150 220)"><path d="M90 240v-96" stroke="#48586c" stroke-width="20"/><path d="M5 153Q18 57 91 58q70-4 86 95-84 42-172 0Z" fill="#7b79b7" stroke="#494b86" stroke-width="7"/><circle cx="57" cy="112" r="13" fill="#b8e9de"/><circle cx="121" cy="100" r="10" fill="#ffe39a"/></g>
+    <g transform="translate(570 285) scale(.7)"><path d="M90 240v-96" stroke="#48586c" stroke-width="20"/><path d="M5 153Q18 57 91 58q70-4 86 95-84 42-172 0Z" fill="#5d8f99" stroke="#3e6874" stroke-width="7"/><circle cx="57" cy="112" r="13" fill="#b8e9de"/><circle cx="121" cy="100" r="10" fill="#ffe39a"/></g>
+    <g transform="translate(1010 180) scale(1.15)"><path d="M90 240v-96" stroke="#48586c" stroke-width="20"/><path d="M5 153Q18 57 91 58q70-4 86 95-84 42-172 0Z" fill="#6f70ac" stroke="#45477e" stroke-width="7"/><circle cx="57" cy="112" r="13" fill="#b8e9de"/><circle cx="121" cy="100" r="10" fill="#ffe39a"/></g>
+    <g transform="translate(1550 260) scale(.78)"><path d="M90 240v-96" stroke="#48586c" stroke-width="20"/><path d="M5 153Q18 57 91 58q70-4 86 95-84 42-172 0Z" fill="#578c94" stroke="#3d6670" stroke-width="7"/><circle cx="57" cy="112" r="13" fill="#b8e9de"/><circle cx="121" cy="100" r="10" fill="#ffe39a"/></g>
+  </g>
+</svg>

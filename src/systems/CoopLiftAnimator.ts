@@ -3,11 +3,10 @@ import type { PlayerId } from '../types/commands';
 import type { CooperationState, PlayerCooperationController } from './PlayerCooperationController';
 
 const animationFor: Partial<Record<CooperationState, string>> = {
-  LIFT_READY: 'lift-ready',
-  CARRYING: 'lift-carrying',
-  RIDING: 'lift-riding',
-  BOOST_JUMP: 'lift-boost-jump',
-  LIFT_CANCEL: 'lift-cancel',
+  LIFT_READY: 'lift',
+  CARRYING: 'lift',
+  // The rider keeps the original character proportions and calm idle motion.
+  RIDING: 'idle',
 };
 
 /** Presentation-only mapping from semantic cooperation states to animation keys. */
